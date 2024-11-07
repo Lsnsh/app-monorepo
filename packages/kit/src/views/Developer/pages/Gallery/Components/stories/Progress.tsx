@@ -1,6 +1,24 @@
-import { Progress, Stack } from '@onekeyhq/components';
+import { useState } from 'react';
+
+import { Button, Progress, YStack } from '@onekeyhq/components';
 
 import { Layout } from './utils/Layout';
+
+function ProgressDemo() {
+  const [progress, setProgress] = useState(0);
+  return (
+    <YStack gap="$2">
+      <Progress value={progress} />
+      <Button
+        onPress={() => {
+          setProgress(progress + 10);
+        }}
+      >
+        Increase
+      </Button>
+    </YStack>
+  );
+}
 
 const ProgressGallery = () => (
   <Layout
@@ -10,10 +28,18 @@ const ProgressGallery = () => (
     elements={[
       {
         title: 'Default',
+        element: <ProgressDemo />,
+      },
+      {
+        title: '0',
         element: (
-          <Stack space="$2">
-            <Progress value={50} w="$36" />
-          </Stack>
+          <YStack gap="$2">
+            <Progress value={0} />
+            <Progress value={0.1} />
+            <Progress value={60} />
+            <Progress value={80} />
+            <Progress value={100} />
+          </YStack>
         ),
       },
     ]}

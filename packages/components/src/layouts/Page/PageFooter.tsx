@@ -2,33 +2,37 @@ import type { PropsWithChildren } from 'react';
 import { memo, useContext, useEffect, useMemo, useState } from 'react';
 
 import Animated from 'react-native-reanimated';
+import { useMedia } from 'tamagui';
 
-import { EPageType, usePageType } from '../../hocs';
-import { useSafeAreaInsets } from '../../hooks';
-import { View } from '../../optimization';
+import { OptimizationView } from '../../optimization';
 
-import { useSafeKeyboardAnimationStyle } from './hooks';
+import { useSafeAreaBottom, useSafeKeyboardAnimationStyle } from './hooks';
 import { PageContext } from './PageContext';
 import { FooterActions } from './PageFooterActions';
 
 import type { IPageFooterProps } from './type';
 
-const useSafeAreaBottom = () => {
-  const pageType = usePageType();
-  const { safeAreaEnabled } = useContext(PageContext);
-  const { bottom } = useSafeAreaInsets();
-  return safeAreaEnabled && pageType === EPageType.modal ? bottom : 0;
-};
-
 const Placeholder = () => {
   const bottom = useSafeAreaBottom();
-  return bottom > 0 ? <View style={{ height: bottom }} /> : null;
+  return bottom > 0 ? <OptimizationView style={{ height: bottom }} /> : null;
 };
 
-const PageFooterContainer = ({ children }: PropsWithChildren) => {
+const PageFooterContainer = ({
+  children,
+  disableKeyboardAnimation,
+}: PropsWithChildren & { disableKeyboardAnimation: boolean }) => {
   const safeKeyboardAnimationStyle = useSafeKeyboardAnimationStyle();
+  const { gtMd } = useMedia();
   return (
-    <Animated.View style={safeKeyboardAnimationStyle}>{children}</Animated.View>
+    <Animated.View
+      style={
+        gtMd || disableKeyboardAnimation
+          ? undefined
+          : safeKeyboardAnimationStyle
+      }
+    >
+      {children}
+    </Animated.View>
   );
 };
 
@@ -68,7 +72,9 @@ export function BasicPageFooter() {
   }, [footerRef]);
 
   return footerProps ? (
-    <PageFooterContainer>
+    <PageFooterContainer
+      disableKeyboardAnimation={footerProps?.disableKeyboardAnimation ?? false}
+    >
       {footerProps.children ? (
         footerProps.children
       ) : (

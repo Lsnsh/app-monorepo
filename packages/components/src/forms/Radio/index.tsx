@@ -1,6 +1,7 @@
 import { RadioGroup } from 'tamagui';
 
-import { Label, XStack } from '../../primitives';
+import { Label, SizableText, XStack, YStack } from '../../primitives';
+import { NATIVE_HIT_SLOP } from '../../utils';
 
 import type { IFormFieldProps } from '../types';
 
@@ -8,15 +9,15 @@ export type IRadioProps = IFormFieldProps<
   string,
   {
     disabled?: boolean;
-    options: { label: string; value: string }[];
+    options: { label: string; description?: string; value: string }[];
   }
 >;
 
 export function Radio({ value, onChange, disabled, options }: IRadioProps) {
   return (
     <RadioGroup value={value} onValueChange={onChange} disabled={disabled}>
-      {options.map(({ label, value: v }) => (
-        <XStack alignItems="center" py="$2">
+      {options.map(({ label, description, value: v }, index) => (
+        <XStack py="$2" key={index}>
           <RadioGroup.Item
             value={v}
             id={v}
@@ -30,13 +31,11 @@ export function Radio({ value, onChange, disabled, options }: IRadioProps) {
             borderColor={value === v ? '$transparent' : '$borderStrong'}
             backgroundColor={value === v ? '$bgPrimary' : '$transparent'}
             borderRadius="$full"
-            focusStyle={{
+            focusVisibleStyle={{
               outlineOffset: 2,
               outlineColor: '$focusRing',
             }}
-            $platform-native={{
-              hitSlop: { top: 8, left: 8, right: 8, bottom: 8 },
-            }}
+            hitSlop={NATIVE_HIT_SLOP}
           >
             <RadioGroup.Indicator
               unstyled
@@ -46,9 +45,14 @@ export function Radio({ value, onChange, disabled, options }: IRadioProps) {
               borderRadius="$full"
             />
           </RadioGroup.Item>
-          <Label htmlFor={v} variant="$bodyLgMedium" pl="$2" py="$2" my="$-2">
-            {label}
-          </Label>
+          <YStack gap="$1" pl="$2" py="$2" my="$-2" flex={1}>
+            <Label htmlFor={v} variant="$bodyLgMedium">
+              {label}
+            </Label>
+            <SizableText size="$bodyMd" color="$textSubdued">
+              {description}
+            </SizableText>
+          </YStack>
         </XStack>
       ))}
     </RadioGroup>

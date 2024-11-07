@@ -85,6 +85,9 @@ type ParsedRoute = {
  * @param options Extra options to fine-tune how to parse the path.
  */
 
+// ---CHANGED Begin----: initial path from url
+let initialPath: string | undefined = globalThis.location.pathname;
+// ---CHANGED end----
 
 // ---CHANGED Begin----: replace `export default` by `export function`
 export function getStateFromPath<ParamList extends {}>(
@@ -94,7 +97,7 @@ export function getStateFromPath<ParamList extends {}>(
 ): ResultState | undefined {
 
   // ---CHANGED Begin----: support hash router
-  path = window.location.hash.split('#').pop() || '/';
+  path = globalThis.location.hash.split('#').pop() || '/';
   // ---CHANGED end----
 
   if (options) {
@@ -574,7 +577,14 @@ const createNestedStateObject = (
   }
 
   route = findFocusedRoute(state) as ParsedRoute;
-  route.path = path;
+
+  // ---CHANGED Begin----: rewrite hash path to initial path
+  if (initialPath) {
+    route.path = initialPath;
+    initialPath = undefined;
+  }
+  // ---CHANGED end----
+  
 
   const params = parseQueryParams(
     path,

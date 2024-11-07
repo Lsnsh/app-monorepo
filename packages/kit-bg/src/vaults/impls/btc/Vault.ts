@@ -1,21 +1,27 @@
 import BigNumber from 'bignumber.js';
-import { isEmpty, isNil } from 'lodash';
+import { Psbt } from 'bitcoinjs-lib';
+import { cloneDeep, isEmpty, isNil, uniq } from 'lodash';
 
 import {
   convertBtcXprvtToHex,
   getBtcForkNetwork,
   getBtcXpubFromXprvt,
   getBtcXpubSupportedAddressEncodings,
+  getInputsToSignFromPsbt,
   validateBtcAddress,
-  validateBtcXprvt,
-  validateBtcXpub,
 } from '@onekeyhq/core/src/chains/btc/sdkBtc';
+import {
+  decodedPsbt as decodedPsbtFN,
+  formatPsbtHex,
+  toPsbtNetwork,
+} from '@onekeyhq/core/src/chains/btc/sdkBtc/providerUtils';
 import type {
   IBtcInput,
   ICoinSelectUTXO,
   IEncodedTxBtc,
   IOutputsForCoinSelect,
 } from '@onekeyhq/core/src/chains/btc/types';
+import coreChainApi from '@onekeyhq/core/src/instance/coreChainApi';
 import {
   decodeSensitiveText,
   encodeSensitiveText,
@@ -23,6 +29,7 @@ import {
 import type {
   ICoreApiSignAccount,
   ICoreApiSignBtcExtraInfo,
+  IEncodedTx,
   ISignedTxPro,
   ITxInput,
   ITxInputToSign,
@@ -38,9 +45,12 @@ import {
   InsufficientBalance,
   OneKeyInternalError,
 } from '@onekeyhq/shared/src/errors';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { appLocale } from '@onekeyhq/shared/src/locale/appLocale';
 import { checkIsDefined } from '@onekeyhq/shared/src/utils/assertUtils';
 import { memoizee } from '@onekeyhq/shared/src/utils/cacheUtils';
 import timerUtils from '@onekeyhq/shared/src/utils/timerUtils';
+import type { INetworkAccount } from '@onekeyhq/shared/types/account';
 import type {
   IGeneralInputValidation,
   INetworkAccountAddressDetail,
@@ -48,8 +58,13 @@ import type {
   IXprvtValidation,
   IXpubValidation,
 } from '@onekeyhq/shared/types/address';
+import type {
+  IMeasureRpcStatusParams,
+  IMeasureRpcStatusResult,
+} from '@onekeyhq/shared/types/customRpc';
 import type { IFeeInfoUnit } from '@onekeyhq/shared/types/fee';
-import { EOnChainHistoryTxType } from '@onekeyhq/shared/types/history';
+import type { IStakeTxBtcBabylon } from '@onekeyhq/shared/types/staking';
+import { IStakeTxResponse } from '@onekeyhq/shared/types/staking';
 import type { IDecodedTx, IDecodedTxAction } from '@onekeyhq/shared/types/tx';
 import {
   EDecodedTxActionType,
@@ -61,7 +76,9 @@ import { VaultBase } from '../../base/VaultBase';
 import { KeyringHardware } from './KeyringHardware';
 import { KeyringHd } from './KeyringHd';
 import { KeyringImported } from './KeyringImported';
+import { KeyringQr } from './KeyringQr';
 import { KeyringWatching } from './KeyringWatching';
+import { ClientBtc } from './sdkBtc/ClientBtc';
 
 import type {
   IDBAccount,
@@ -70,7 +87,7 @@ import type {
 } from '../../../dbs/local/types';
 import type { KeyringBase } from '../../base/KeyringBase';
 import type {
-  IBroadcastTransactionParams,
+  IBroadcastTransactionByCustomRpcParams,
   IBuildAccountAddressDetailParams,
   IBuildDecodedTxParams,
   IBuildEncodedTxParams,
@@ -81,6 +98,8 @@ import type {
 
 // btc vault
 export default class VaultBtc extends VaultBase {
+  override coreApi = coreChainApi.btc.hd;
+
   override async buildAccountAddressDetail(
     params: IBuildAccountAddressDetailParams,
   ): Promise<INetworkAccountAddressDetail> {
@@ -106,20 +125,52 @@ export default class VaultBtc extends VaultBase {
   ): Promise<IDecodedTx> {
     const { unsignedTx } = params;
     const encodedTx = unsignedTx.encodedTx as IEncodedTxBtc;
-    const { inputs, outputs } = encodedTx;
+    const { swapInfo, stakingInfo } = unsignedTx;
+    const { inputs, outputs, inputsToSign, psbtHex } = encodedTx;
+
+    if (psbtHex && Array.isArray(inputsToSign)) {
+      const decodedPsbt = await this.buildDecodedPsbtTx(params);
+      const decodedPsbtAction = decodedPsbt.actions[0];
+      if (stakingInfo) {
+        const accountAddress = await this.getAccountAddress();
+        const { send } = stakingInfo;
+        const action = await this.buildInternalStakingAction({
+          accountAddress,
+          stakingInfo,
+          stakingToAddress: decodedPsbtAction.assetTransfer?.to,
+        });
+
+        let sendNativeTokenAmountBN = new BigNumber(0);
+        let sendNativeTokenAmountValueBN = new BigNumber(0);
+
+        if (send && send.token.isNative) {
+          sendNativeTokenAmountBN = new BigNumber(send.amount);
+          sendNativeTokenAmountValueBN = sendNativeTokenAmountBN.shiftedBy(
+            send.token.decimals,
+          );
+          decodedPsbt.nativeAmount = sendNativeTokenAmountBN.toFixed();
+          decodedPsbt.nativeAmountValue =
+            sendNativeTokenAmountValueBN.toFixed();
+        }
+
+        if (action.assetTransfer) {
+          action.assetTransfer.utxoFrom =
+            decodedPsbtAction.assetTransfer?.utxoFrom;
+          action.assetTransfer.utxoTo = decodedPsbtAction.assetTransfer?.utxoTo;
+        }
+        decodedPsbt.actions = [action];
+      }
+
+      return decodedPsbt;
+    }
+
     const network = await this.getNetwork();
     const account = await this.getAccount();
     const nativeToken = await this.backgroundApi.serviceToken.getToken({
+      accountId: this.accountId,
       networkId: this.networkId,
       tokenIdOnNetwork: '',
-      accountAddress: account.address,
     });
-
-    if (!nativeToken) {
-      throw new OneKeyInternalError('Native token not found');
-    }
-
-    let actions: IDecodedTxAction[] = [];
 
     const utxoFrom = inputs.map((input) => ({
       address: input.address,
@@ -130,52 +181,155 @@ export default class VaultBtc extends VaultBase {
       symbol: network.symbol,
       isMine: true,
     }));
-    const utxoTo = outputs
-      .filter((output) => !output.payload?.isCharge)
-      .map((output) => ({
-        address: output.address,
-        balance: new BigNumber(output.value)
-          .shiftedBy(-network.decimals)
-          .toFixed(),
-        balanceValue: output.value,
-        symbol: network.symbol,
-        isMine: output.address === account.address,
-      }));
+
+    const originalUtxoTo = outputs.map((output) => ({
+      address: output.address,
+      balance: new BigNumber(output.value)
+        .shiftedBy(-network.decimals)
+        .toFixed(),
+      balanceValue: output.value,
+      symbol: network.symbol,
+      isMine: output.address === account.address,
+    }));
+
+    const utxoTo =
+      outputs.length > 1
+        ? outputs
+            .filter((output) => !output.payload?.isChange && output.address)
+            .map((output) => ({
+              address: output.address,
+              balance: new BigNumber(output.value)
+                .shiftedBy(-network.decimals)
+                .toFixed(),
+              balanceValue: output.value,
+              symbol: network.symbol,
+              isMine: output.address === account.address,
+            }))
+        : outputs.map((output) => ({
+            address: output.address,
+            balance: new BigNumber(output.value)
+              .shiftedBy(-network.decimals)
+              .toFixed(),
+            balanceValue: output.value,
+            symbol: network.symbol,
+            isMine: output.address === account.address,
+          }));
 
     let sendNativeTokenAmountBN = new BigNumber(0);
     let sendNativeTokenAmountValueBN = new BigNumber(0);
 
-    actions = [
+    let actions: IDecodedTxAction[] = [
       {
-        type: EDecodedTxActionType.ASSET_TRANSFER,
-        assetTransfer: {
+        type: EDecodedTxActionType.UNKNOWN,
+        unknownAction: {
           from: account.address,
           to: utxoTo[0].address,
-          sends: utxoTo.map((utxo) => {
-            sendNativeTokenAmountBN = sendNativeTokenAmountBN.plus(
-              utxo.balance,
-            );
-            sendNativeTokenAmountValueBN = sendNativeTokenAmountValueBN.plus(
-              utxo.balanceValue,
-            );
-            return {
-              from: account.address,
-              to: utxo.address,
-              isNative: true,
-              tokenIdOnNetwork: '',
-              name: nativeToken.name,
-              icon: nativeToken.logoURI ?? '',
-              amount: utxo.balance,
-              amountValue: utxo.balanceValue,
-              symbol: network.symbol,
-            };
-          }),
-          receives: [],
-          utxoFrom,
-          utxoTo,
         },
       },
     ];
+
+    if (swapInfo) {
+      const swapSendToken = swapInfo.sender.token;
+      const swapReceiveToken = swapInfo.receiver.token;
+      const providerInfo = swapInfo.swapBuildResData.result.info;
+      const action = await this.buildTxTransferAssetAction({
+        from: swapInfo.accountAddress,
+        to: utxoTo[0].address,
+        application: {
+          name: providerInfo.providerName,
+          icon: providerInfo.providerLogo ?? '',
+        },
+        transfers: [
+          {
+            from: swapInfo.accountAddress,
+            to: '',
+            tokenIdOnNetwork: swapSendToken.contractAddress,
+            icon: swapSendToken.logoURI ?? '',
+            name: swapSendToken.name ?? '',
+            symbol: swapSendToken.symbol,
+            amount: swapInfo.sender.amount,
+            isNFT: false,
+            isNative: swapSendToken.isNative,
+          },
+          {
+            from: '',
+            to: swapInfo.receivingAddress,
+            tokenIdOnNetwork: swapReceiveToken.contractAddress,
+            icon: swapReceiveToken.logoURI ?? '',
+            name: swapReceiveToken.name ?? '',
+            symbol: swapReceiveToken.symbol,
+            amount: swapInfo.receiver.amount,
+            isNFT: false,
+            isNative: swapReceiveToken.isNative,
+          },
+        ],
+        isInternalSwap: true,
+        swapReceivedAddress: swapInfo.receivingAddress,
+        swapReceivedNetworkId: swapInfo.receiver.token.networkId,
+      });
+      if (swapSendToken.isNative) {
+        sendNativeTokenAmountBN = new BigNumber(swapInfo.sender.amount);
+        sendNativeTokenAmountValueBN = sendNativeTokenAmountBN.shiftedBy(
+          swapSendToken.decimals,
+        );
+      }
+      if (action.assetTransfer) {
+        action.assetTransfer.utxoFrom = utxoFrom;
+        action.assetTransfer.utxoTo = originalUtxoTo;
+      }
+      actions = [action];
+    } else if (stakingInfo) {
+      const accountAddress = await this.getAccountAddress();
+      const { send } = stakingInfo;
+      const action = await this.buildInternalStakingAction({
+        accountAddress,
+        stakingInfo,
+        stakingToAddress: utxoTo[0].address,
+      });
+      if (send && send.token.isNative) {
+        sendNativeTokenAmountBN = new BigNumber(send.amount);
+        sendNativeTokenAmountValueBN = sendNativeTokenAmountBN.shiftedBy(
+          send.token.decimals,
+        );
+      }
+      if (action.assetTransfer) {
+        action.assetTransfer.utxoFrom = utxoFrom;
+        action.assetTransfer.utxoTo = originalUtxoTo;
+      }
+      actions = [action];
+    } else if (nativeToken) {
+      actions = [
+        {
+          type: EDecodedTxActionType.ASSET_TRANSFER,
+          assetTransfer: {
+            from: account.address,
+            to: utxoTo[0].address,
+            sends: utxoTo.map((utxo) => {
+              sendNativeTokenAmountBN = sendNativeTokenAmountBN.plus(
+                utxo.balance,
+              );
+              sendNativeTokenAmountValueBN = sendNativeTokenAmountValueBN.plus(
+                utxo.balanceValue,
+              );
+              return {
+                from: account.address,
+                to: utxo.address,
+                isNative: true,
+                tokenIdOnNetwork: '',
+                name: nativeToken.name,
+                icon: nativeToken.logoURI ?? '',
+                amount: utxo.balance,
+                amountValue: utxo.balanceValue,
+                symbol: network.symbol,
+              };
+            }),
+            receives: [],
+            utxoFrom,
+            utxoTo: originalUtxoTo,
+          },
+        },
+      ];
+    }
 
     const totalFeeInNative = new BigNumber(encodedTx.fee)
       .shiftedBy(-1 * network.feeMeta.decimals)
@@ -190,10 +344,8 @@ export default class VaultBtc extends VaultBase {
       status: EDecodedTxStatus.Pending,
       networkId: this.networkId,
       accountId: this.accountId,
+      xpub: (account as IDBUtxoAccount).xpub,
       extraInfo: null,
-      payload: {
-        type: EOnChainHistoryTxType.Send,
-      },
       encodedTx,
       totalFeeInNative,
       nativeAmount: sendNativeTokenAmountBN.toFixed(),
@@ -201,18 +353,147 @@ export default class VaultBtc extends VaultBase {
     };
   }
 
-  override broadcastTransaction(
-    params: IBroadcastTransactionParams,
-  ): Promise<ISignedTxPro> {
-    console.log('VaultBtc broadcastTransaction', params, {
-      rawTxOk:
-        params.signedTx.rawTx ===
-        '0200000000010190ed799b5a2d54a743f8c405615ddada3823b2cc1c178a77a15f5e18de45cb390100000000ffffffff02e80300000000000022512017161c749b810cbd8a2aa7310965b5cb025de7afa2e098a9d3b1aba6424302c6f00e02000000000022512017161c749b810cbd8a2aa7310965b5cb025de7afa2e098a9d3b1aba6424302c601402a5758f1759557b6b7a02900339f5ed83984e26a24e22b642f7a3bcd89a13392cf0848d29eb6be2e18e2c040969c37bd44825f8a343db8c530229c0aceecf88200000000',
-      txidOk:
-        params.signedTx.txid ===
-        '17eafe9b6ca10dbdb70f8f37460db13401cccd9cc2bcb4851a31f01799688dd3',
+  async buildDecodedPsbtTx(params: IBuildDecodedTxParams): Promise<IDecodedTx> {
+    const { unsignedTx } = params;
+    const encodedTx = unsignedTx.encodedTx as IEncodedTxBtc;
+    const { inputs, outputs, inputsToSign } = encodedTx;
+
+    if (
+      !inputsToSign ||
+      (Array.isArray(inputsToSign) && !inputsToSign.length)
+    ) {
+      throw new OneKeyInternalError('inputsToSign is empty');
+    }
+
+    const network = await this.getNetwork();
+    const account = await this.getAccount();
+    const nativeToken = await this.backgroundApi.serviceToken.getToken({
+      accountId: this.accountId,
+      networkId: this.networkId,
+      tokenIdOnNetwork: '',
     });
-    throw new Error('Method not implemented.');
+
+    if (!nativeToken) {
+      throw new OneKeyInternalError('Native token not found');
+    }
+
+    const { allUtxoList } = await this._collectUTXOsInfoByApi();
+
+    const utxoFrom: {
+      address: string;
+      balance: string;
+      balanceValue: string;
+      symbol: string;
+      isMine: boolean;
+    }[] = [];
+
+    inputsToSign.forEach((inputToSign) => {
+      const index = inputToSign.index;
+      const input = inputs[index];
+      const existUtxo = allUtxoList?.find(
+        (i) => i.txid === input.txid && i.vout === input.vout,
+      );
+      if (existUtxo) {
+        utxoFrom.push({
+          address: input.address,
+          balance: new BigNumber(input.value)
+            .shiftedBy(-network.decimals)
+            .toFixed(),
+          balanceValue: input.value,
+          symbol: network.symbol,
+          isMine: true,
+        });
+      }
+    });
+
+    const originalUtxoTo = outputs.map((output) => ({
+      address: output.address,
+      balance: new BigNumber(output.value)
+        .shiftedBy(-network.decimals)
+        .toFixed(),
+      balanceValue: output.value,
+      symbol: network.symbol,
+      isMine: output.address === account.address,
+    }));
+
+    const utxoTo =
+      outputs.length > 1
+        ? outputs
+            .filter((output) => !output.payload?.isChange && output.address)
+            .map((output) => ({
+              address: output.address,
+              balance: new BigNumber(output.value)
+                .shiftedBy(-network.decimals)
+                .toFixed(),
+              balanceValue: output.value,
+              symbol: network.symbol,
+              isMine: output.address === account.address,
+            }))
+        : outputs.map((output) => ({
+            address: output.address,
+            balance: new BigNumber(output.value)
+              .shiftedBy(-network.decimals)
+              .toFixed(),
+            balanceValue: output.value,
+            symbol: network.symbol,
+            isMine: output.address === account.address,
+          }));
+
+    let sendNativeTokenAmountBN = new BigNumber(0);
+    let sendNativeTokenAmountValueBN = new BigNumber(0);
+    const actions: IDecodedTxAction[] = [
+      {
+        type: EDecodedTxActionType.ASSET_TRANSFER,
+        assetTransfer: {
+          from: utxoFrom.length ? utxoFrom[0].address : inputs[0].address,
+          to: utxoTo[0].address,
+          sends: utxoTo.map((utxo) => ({
+            from: account.address,
+            to: utxo.address,
+            isNative: true,
+            tokenIdOnNetwork: '',
+            name: nativeToken.name,
+            icon: nativeToken.logoURI ?? '',
+            amount: utxo.balance,
+            amountValue: utxo.balanceValue,
+            symbol: network.symbol,
+          })),
+          receives: [],
+          utxoFrom,
+          utxoTo: originalUtxoTo,
+        },
+      },
+    ];
+    const shouldCalculateNativeTokenAmount = utxoFrom.length >= 1;
+    utxoTo.forEach((utxo) => {
+      if (!utxo.isMine && shouldCalculateNativeTokenAmount) {
+        sendNativeTokenAmountBN = sendNativeTokenAmountBN.plus(utxo.balance);
+        sendNativeTokenAmountValueBN = sendNativeTokenAmountValueBN.plus(
+          utxo.balanceValue,
+        );
+      }
+    });
+
+    const totalFeeInNative = new BigNumber(encodedTx.fee)
+      .shiftedBy(-1 * network.feeMeta.decimals)
+      .toFixed();
+
+    return {
+      txid: '',
+      owner: account.address,
+      signer: account.address,
+      nonce: 0,
+      actions,
+      status: EDecodedTxStatus.Pending,
+      networkId: this.networkId,
+      accountId: this.accountId,
+      xpub: (account as IDBUtxoAccount).xpub,
+      extraInfo: null,
+      encodedTx,
+      totalFeeInNative,
+      nativeAmount: sendNativeTokenAmountBN.toFixed(),
+      nativeAmountValue: sendNativeTokenAmountValueBN.toFixed(),
+    };
   }
 
   override async buildEncodedTx(
@@ -233,7 +514,9 @@ export default class VaultBtc extends VaultBase {
   override async buildUnsignedTx(
     params: IBuildUnsignedTxParams,
   ): Promise<IUnsignedTxPro> {
-    const encodedTx = await this.buildEncodedTx(params);
+    const encodedTx =
+      (params.encodedTx as IEncodedTxBtc) ??
+      (await this.buildEncodedTx(params));
 
     if (encodedTx) {
       return this._buildUnsignedTxFromEncodedTx({
@@ -250,7 +533,9 @@ export default class VaultBtc extends VaultBase {
   }): Promise<IUnsignedTxPro> {
     const { unsignedTx, feeInfo } = options;
     let encodedTxNew = unsignedTx.encodedTx as IEncodedTxBtc;
-    if (feeInfo) {
+    const { psbtHex, inputsToSign } = encodedTxNew;
+    const isPsbtTx = psbtHex && inputsToSign;
+    if (feeInfo && !isPsbtTx) {
       if (!unsignedTx.transfersInfo || isEmpty(unsignedTx.transfersInfo)) {
         throw new OneKeyInternalError('transfersInfo is required');
       }
@@ -305,11 +590,15 @@ export default class VaultBtc extends VaultBase {
   }
 
   override async validateXpub(xpub: string): Promise<IXpubValidation> {
-    return Promise.resolve(validateBtcXpub({ xpub }));
+    const btcForkNetwork = await this.getBtcForkNetwork();
+    return Promise.resolve(this.coreApi.validateXpub({ xpub, btcForkNetwork }));
   }
 
   override async validateXprvt(xprvt: string): Promise<IXprvtValidation> {
-    return Promise.resolve(validateBtcXprvt({ xprvt }));
+    const btcForkNetwork = await this.getBtcForkNetwork();
+    return Promise.resolve(
+      this.coreApi.validateXprvt({ xprvt, btcForkNetwork }),
+    );
   }
 
   override async validateAddress(address: string) {
@@ -326,35 +615,45 @@ export default class VaultBtc extends VaultBase {
       params,
     );
 
-    // build deriveItems
-    let xpub = '';
-    if (result.xpubResult?.isValid) {
-      // xpub from input
-      xpub = input;
-    }
-    const network = await this.getBtcForkNetwork();
-    if (!xpub && result.xprvtResult?.isValid) {
-      // xpub from xprvt(input)
-      ({ xpub } = getBtcXpubFromXprvt({
-        network,
-        privateKeyRaw: convertBtcXprvtToHex({ xprvt: input }),
-      }));
-    }
-    if (xpub) {
-      // encoding list from xpub
-      const { supportEncodings } = getBtcXpubSupportedAddressEncodings({
-        xpub,
-        network,
-      });
+    if (result.addressResult?.isValid && result.addressResult?.encoding) {
+      const settings = await this.getVaultSettings();
+      const items = Object.values(settings.accountDeriveInfo);
+      result.deriveInfoItems = items.filter(
+        (item) =>
+          item.addressEncoding &&
+          result.addressResult?.encoding === item.addressEncoding,
+      );
+    } else {
+      // build deriveItems
+      let xpub = '';
+      if (result.xpubResult?.isValid) {
+        // xpub from input
+        xpub = input;
+      }
+      const network = await this.getBtcForkNetwork();
+      if (!xpub && result.xprvtResult?.isValid) {
+        // xpub from xprvt(input)
+        ({ xpub } = getBtcXpubFromXprvt({
+          network,
+          privateKeyRaw: convertBtcXprvtToHex({ xprvt: input }),
+        }));
+      }
+      if (xpub) {
+        // encoding list from xpub
+        const { supportEncodings } = getBtcXpubSupportedAddressEncodings({
+          xpub,
+          network,
+        });
 
-      if (supportEncodings && supportEncodings.length) {
-        const settings = await this.getVaultSettings();
-        const items = Object.values(settings.accountDeriveInfo);
-        result.deriveInfoItems = items.filter(
-          (item) =>
-            item.addressEncoding &&
-            supportEncodings.includes(item.addressEncoding),
-        );
+        if (supportEncodings && supportEncodings.length) {
+          const settings = await this.getVaultSettings();
+          const items = Object.values(settings.accountDeriveInfo);
+          result.deriveInfoItems = items.filter(
+            (item) =>
+              item.addressEncoding &&
+              supportEncodings.includes(item.addressEncoding),
+          );
+        }
       }
     }
 
@@ -369,8 +668,9 @@ export default class VaultBtc extends VaultBase {
     ).then((results) => results.map((i) => i.encoding));
   }
 
-  override keyringMap: Record<IDBWalletType, typeof KeyringBase> = {
+  override keyringMap: Record<IDBWalletType, typeof KeyringBase | undefined> = {
     hd: KeyringHd,
+    qr: KeyringQr,
     hw: KeyringHardware,
     imported: KeyringImported,
     watching: KeyringWatching,
@@ -402,7 +702,15 @@ export default class VaultBtc extends VaultBase {
       await this._buildTransferParamsWithCoinSelector(params);
 
     if (!inputs || !outputs || isNil(fee)) {
-      throw new InsufficientBalance({ message: 'Failed to select UTXOs' });
+      const insufficientBalance = appLocale.intl.formatMessage({
+        id: ETranslations.earn_insufficient_balance,
+      });
+      const description = appLocale.intl.formatMessage({
+        id: ETranslations.send_toast_btc_fork_insufficient_fund,
+      });
+      throw new InsufficientBalance({
+        message: `${insufficientBalance} ${description}`,
+      });
     }
 
     return {
@@ -450,7 +758,7 @@ export default class VaultBtc extends VaultBase {
           payload: address
             ? undefined
             : {
-                isCharge: true,
+                isChange: true,
                 bip44Path: getBIP44Path(account, account.address),
               },
         };
@@ -479,7 +787,7 @@ export default class VaultBtc extends VaultBase {
 
     // TODO: inscription transfer
 
-    const utxosInfo = await this._collectUTXOsInfoByApi();
+    const { utxoList: utxosInfo } = await this._collectUTXOsInfoByApi();
 
     // Select the slowest fee rate as default, otherwise the UTXO selection
     // would be failed.
@@ -495,7 +803,7 @@ export default class VaultBtc extends VaultBase {
       ({ txid, vout, value, address, path }) => ({
         txId: txid,
         vout,
-        value: parseInt(value),
+        value: parseInt(value, 10),
         address,
         path,
       }),
@@ -508,6 +816,7 @@ export default class VaultBtc extends VaultBase {
         address: to,
         value: parseInt(
           new BigNumber(amount).shiftedBy(network.decimals).toFixed(),
+          10,
         ),
       }));
     } else {
@@ -519,13 +828,18 @@ export default class VaultBtc extends VaultBase {
         .shiftedBy(-network.decimals);
 
       if (allUtxoAmount.lt(amount)) {
-        throw new InsufficientBalance();
+        throw new InsufficientBalance({
+          info: {
+            symbol: network.symbol,
+          },
+        });
       }
 
       const max = allUtxoAmount.lte(amount);
 
       const value = parseInt(
         new BigNumber(amount).shiftedBy(network.decimals).toFixed(),
+        10,
       );
 
       outputsForCoinSelect = [
@@ -593,12 +907,6 @@ export default class VaultBtc extends VaultBase {
         utxo: { txid: input.txid, vout: input.vout, value },
       });
     }
-    const outputsInUnsignedTx = outputs.map(({ address, value, payload }) => ({
-      address,
-      value: new BigNumber(value),
-      payload,
-    }));
-
     const selectedInputs = inputsForCoinSelect?.filter((input) =>
       inputsInUnsignedTx.some(
         (i) => i.utxo?.txid === input.txId && i.utxo.vout === input.vout,
@@ -609,14 +917,11 @@ export default class VaultBtc extends VaultBase {
         selectedInputs ?? [],
         outputs.map((o) => ({
           address: o.address,
-          value: parseInt(o.value),
+          value: parseInt(o.value, 10),
         })) ?? [],
       );
     }
-
-    const ret = {
-      inputs: inputsInUnsignedTx,
-      outputs: outputsInUnsignedTx,
+    const ret: IUnsignedTxPro = {
       txSize,
       encodedTx,
       transfersInfo,
@@ -629,11 +934,17 @@ export default class VaultBtc extends VaultBase {
     async () => {
       try {
         const feeInfo = await this.backgroundApi.serviceGas.estimateFee({
+          accountId: this.accountId,
           networkId: this.networkId,
+          accountAddress: await this.getAccountAddress(),
         });
         const { feeUTXO } = feeInfo;
         if (!feeUTXO || isEmpty(feeUTXO)) {
-          throw new OneKeyInternalError('Failed to get fee rates.');
+          throw new OneKeyInternalError(
+            appLocale.intl.formatMessage({
+              id: ETranslations.feedback_failed_to_fet_fee_rate,
+            }),
+          );
         }
         const fees = feeUTXO.map((item) =>
           new BigNumber(item.feeRate ?? 0).toFixed(0),
@@ -679,7 +990,11 @@ export default class VaultBtc extends VaultBase {
         );
       } catch (e) {
         console.error(e);
-        throw new OneKeyInternalError('Failed to get fee rates.');
+        throw new OneKeyInternalError(
+          appLocale.intl.formatMessage({
+            id: ETranslations.feedback_failed_to_fet_fee_rate,
+          }),
+        );
       }
     },
     {
@@ -689,7 +1004,8 @@ export default class VaultBtc extends VaultBase {
     },
   );
 
-  async collectTxs(txids: string[]): Promise<{
+  // collectTxs by blockbook api or proxy api
+  async collectTxsByApi(txids: string[]): Promise<{
     [txid: string]: string; // rawTx string
   }> {
     try {
@@ -714,19 +1030,39 @@ export default class VaultBtc extends VaultBase {
   _collectUTXOsInfoByApi = memoizee(
     async () => {
       try {
-        const { utxoList } =
+        const inscriptionProtection =
+          await this.backgroundApi.serviceSetting.getInscriptionProtection();
+        const checkInscriptionProtectionEnabled =
+          await this.backgroundApi.serviceSetting.checkInscriptionProtectionEnabled(
+            {
+              networkId: this.networkId,
+              accountId: this.accountId,
+            },
+          );
+        const withCheckInscription =
+          checkInscriptionProtectionEnabled && inscriptionProtection;
+        const { utxoList, frozenUtxoList, allUtxoList } =
           await this.backgroundApi.serviceAccountProfile.fetchAccountDetails({
             networkId: this.networkId,
-            accountAddress: await this.getAccountAddress(),
-            xpub: await this.getAccountXpub(),
+            accountId: this.accountId,
             withUTXOList: true,
+            withFrozenBalance: true,
+            withCheckInscription,
           });
-        if (!utxoList || isEmpty(utxoList)) {
-          throw new OneKeyInternalError('Failed to get UTXO list.');
+        if (!utxoList) {
+          throw new OneKeyInternalError(
+            appLocale.intl.formatMessage({
+              id: ETranslations.feedback_failed_to_get_utxos,
+            }),
+          );
         }
-        return utxoList;
+        return { utxoList, frozenUtxoList, allUtxoList };
       } catch (e) {
-        throw new OneKeyInternalError('Failed to get UTXO list.');
+        throw new OneKeyInternalError(
+          appLocale.intl.formatMessage({
+            id: ETranslations.feedback_failed_to_get_utxos,
+          }),
+        );
       }
     },
     {
@@ -736,19 +1072,28 @@ export default class VaultBtc extends VaultBase {
     },
   );
 
-  async _getRelPathToAddressByApi({
-    addresses,
+  async _getRelPathsToAddressByApi({
+    addresses, // addresses in tx.inputs
     account,
   }: {
     addresses: string[];
     account: IDBAccount;
   }) {
-    const utxos = await this._collectUTXOsInfoByApi();
+    const { utxoList: utxos } = await this._collectUTXOsInfoByApi();
 
     const pathToAddresses: {
       [fullPath: string]: {
         address: string;
         relPath: string;
+        fullPath: string;
+      };
+    } = {};
+
+    const addressToPath: {
+      [address: string]: {
+        address: string;
+        relPath: string;
+        fullPath: string;
       };
     } = {};
 
@@ -760,6 +1105,7 @@ export default class VaultBtc extends VaultBase {
         pathToAddresses[fullPath] = {
           address,
           relPath,
+          fullPath,
         };
       }
     }
@@ -771,16 +1117,21 @@ export default class VaultBtc extends VaultBase {
       pathToAddresses[firstFullPath] = {
         address: account.address,
         relPath: firstRelPath,
+        fullPath: firstFullPath,
       };
     }
 
-    const relPaths: string[] = Object.values(pathToAddresses).map(
-      (item) => item.relPath,
-    );
+    const relPaths: string[] = [];
+
+    Object.values(pathToAddresses).forEach((item) => {
+      relPaths.push(item.relPath);
+      addressToPath[item.address] = cloneDeep(item);
+    });
 
     return {
-      relPaths,
+      relPaths: uniq(relPaths),
       pathToAddresses,
+      addressToPath,
     };
   }
 
@@ -806,7 +1157,9 @@ export default class VaultBtc extends VaultBase {
       ),
     );
 
-    const nonWitnessPrevTxs = await this.collectTxs(nonWitnessInputPrevTxids);
+    const nonWitnessPrevTxs = await this.collectTxsByApi(
+      nonWitnessInputPrevTxids,
+    );
 
     return [inputAddressesEncodings, nonWitnessPrevTxs];
   }
@@ -820,6 +1173,7 @@ export default class VaultBtc extends VaultBase {
   }): Promise<{
     account: ICoreApiSignAccount;
     btcExtraInfo: ICoreApiSignBtcExtraInfo;
+    relPaths?: string[]; // used for get privateKey of other utxo address
   }> {
     const account = await this.getAccount();
 
@@ -828,28 +1182,30 @@ export default class VaultBtc extends VaultBase {
       addresses = [account.address];
     }
     if (unsignedTx) {
+      const { inputs, inputsToSign } = unsignedTx.encodedTx as IEncodedTxBtc;
       const emptyInputs: Array<ITxInputToSign | IBtcInput> = [];
       addresses = emptyInputs
-        .concat(
-          unsignedTx.inputsToSign ?? [],
-          (unsignedTx.encodedTx as IEncodedTxBtc)?.inputs ?? [],
-        )
+        .concat(inputsToSign ?? [], inputs ?? [])
         .filter(Boolean)
         .map((input) => input.address)
         .concat(account.address);
     }
 
+    // TODO generate relPaths from inputs/inputsToSign/inputsForCoinSelect
+
     const {
       // required for multiple address signing
       relPaths,
       pathToAddresses,
-    } = await this._getRelPathToAddressByApi({
+      addressToPath,
+    } = await this._getRelPathsToAddressByApi({
       addresses,
       account,
     });
 
     const btcExtraInfo: ICoreApiSignBtcExtraInfo = {
       pathToAddresses,
+      addressToPath,
     };
 
     if (unsignedTx) {
@@ -859,12 +1215,9 @@ export default class VaultBtc extends VaultBase {
       btcExtraInfo.nonWitnessPrevTxs = nonWitnessPrevTxs;
     }
 
-    const signerAccount: ICoreApiSignAccount = {
-      ...account,
-      relPaths,
-    };
+    const signerAccount: ICoreApiSignAccount = account;
 
-    return { btcExtraInfo, account: signerAccount };
+    return { btcExtraInfo, account: signerAccount, relPaths };
   }
 
   override getPrivateKeyFromImported(params: {
@@ -882,12 +1235,159 @@ export default class VaultBtc extends VaultBase {
     });
   }
 
-  override async getAccountXpub(): Promise<string> {
-    const account = (await this.getAccount()) as IDBUtxoAccount;
-    return account.xpubSegwit ?? account.xpub;
+  override async getXpubFromAccount(
+    networkAccount: INetworkAccount,
+  ): Promise<string | undefined> {
+    const account = networkAccount as IDBUtxoAccount;
+    return account.xpubSegwit || account.xpub;
   }
 
   override async buildEstimateFeeParams() {
-    return Promise.resolve(undefined);
+    return Promise.resolve({
+      encodedTx: undefined,
+    });
+  }
+
+  override async precheckUnsignedTx(params: {
+    unsignedTx: IUnsignedTxPro;
+  }): Promise<boolean> {
+    const { frozenUtxoList } = await this._collectUTXOsInfoByApi();
+    const encodedTx = params.unsignedTx.encodedTx as IEncodedTxBtc;
+    const { inputs } = encodedTx;
+    if (Array.isArray(frozenUtxoList) && frozenUtxoList.length > 0) {
+      if (
+        inputs.some((input) =>
+          frozenUtxoList.find(
+            (u) => u.txid === input.txid && u.vout === input.vout,
+          ),
+        )
+      ) {
+        throw new OneKeyInternalError({
+          key: ETranslations.feedback_unable_to_send_frozen_balance,
+        });
+      }
+    }
+    return true;
+  }
+
+  getBlockbookCoinName() {
+    return 'Bitcoin';
+  }
+
+  override async getCustomRpcEndpointStatus(
+    params: IMeasureRpcStatusParams,
+  ): Promise<IMeasureRpcStatusResult> {
+    const client = new ClientBtc(params.rpcUrl);
+    const start = performance.now();
+    const result = await client.getInfo();
+    if (result.coin !== this.getBlockbookCoinName()) {
+      throw new OneKeyInternalError('Invalid coin name');
+    }
+    return {
+      responseTime: Math.floor(performance.now() - start),
+      bestBlockNumber: result.bestBlockNumber,
+    };
+  }
+
+  override async broadcastTransactionFromCustomRpc(
+    params: IBroadcastTransactionByCustomRpcParams,
+  ): Promise<ISignedTxPro> {
+    const { customRpcInfo, signedTx } = params;
+    const rpcUrl = customRpcInfo.rpc;
+    if (!rpcUrl) {
+      throw new OneKeyInternalError('Invalid rpc url');
+    }
+    const client = new ClientBtc(rpcUrl);
+    const txid = await client.broadcastTransaction(signedTx.rawTx);
+    return {
+      ...signedTx,
+      txid,
+      encodedTx: signedTx.encodedTx,
+    };
+  }
+
+  override async getAddressType({ address }: { address: string }) {
+    const { encoding, isValid } = await this.validateAddress(address);
+    if (isValid && encoding) {
+      const deriveInfo =
+        await this.backgroundApi.serviceNetwork.getDeriveInfoByAddressEncoding({
+          networkId: this.networkId,
+          encoding,
+        });
+      return {
+        type: deriveInfo?.label,
+      };
+    }
+
+    return {};
+  }
+
+  override async attachFeeInfoToDAppEncodedTx(params: {
+    encodedTx: IEncodedTxBtc;
+    feeInfo: IFeeInfoUnit;
+  }): Promise<IEncodedTxBtc> {
+    const { encodedTx } = params;
+    if (encodedTx.psbtHex && Array.isArray(encodedTx.inputsToSign)) {
+      // @ts-expect-error
+      return '';
+    }
+    return encodedTx;
+  }
+
+  override async buildStakeEncodedTx(
+    params: IStakeTxBtcBabylon,
+  ): Promise<IEncodedTxBtc> {
+    const { psbtHex } = params;
+    const network = await this.getNetwork();
+    const formattedPsbtHex = formatPsbtHex(psbtHex);
+    const psbtNetwork = toPsbtNetwork(network);
+    const psbt = Psbt.fromHex(formattedPsbtHex, { network: psbtNetwork });
+    const decodedPsbt = decodedPsbtFN({ psbt, psbtNetwork });
+    console.log('Babylon Staking PSBT ====>>>>: ', decodedPsbt);
+    const account = await this.backgroundApi.serviceAccount.getAccount({
+      accountId: this.accountId,
+      networkId: this.networkId,
+    });
+
+    const inputsToSign = getInputsToSignFromPsbt({
+      psbt,
+      psbtNetwork,
+      account,
+      isBtcWalletProvider: true,
+    });
+
+    // Check for change address:
+    // 1. More than one output
+    // 2. Not all output addresses are the same as the current account address
+    // This often happens in BRC-20 transfer transactions
+    const hasChangeAddress =
+      decodedPsbt.outputInfos.length > 1 &&
+      !(decodedPsbt.outputInfos ?? []).every(
+        (v) => v.address === account.address,
+      );
+    const encodedTx = {
+      inputs: (decodedPsbt.inputInfos ?? []).map((v) => ({
+        ...v,
+        path: '',
+        value: new BigNumber(v.value).toFixed(),
+      })),
+      outputs: (decodedPsbt.outputInfos ?? []).map((v) => ({
+        ...v,
+        value: new BigNumber(v.value).toFixed(),
+        payload: hasChangeAddress
+          ? {
+              isChange: v.address === account.address,
+            }
+          : undefined,
+      })),
+      inputsForCoinSelect: [],
+      outputsForCoinSelect: [],
+      fee: new BigNumber(decodedPsbt.fee).toFixed(),
+      inputsToSign,
+      psbtHex: psbt.toHex(),
+      disabledCoinSelect: true,
+    };
+
+    return encodedTx;
   }
 }

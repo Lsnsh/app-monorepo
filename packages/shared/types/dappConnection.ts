@@ -1,6 +1,7 @@
 import type { IAccountSelectorAvailableNetworksMap } from '@onekeyhq/kit/src/states/jotai/contexts/accountSelector';
 import type { IAccountSelectorSelectedAccount } from '@onekeyhq/kit-bg/src/dbs/simple/entity/SimpleDbEntityAccountSelector';
 
+import type { INetworkAccount } from './account';
 import type { IInjectedProviderNamesStrings } from '@onekeyfe/cross-inpage-provider-types';
 import type { SessionTypes } from '@walletconnect/types';
 
@@ -8,6 +9,7 @@ export type IConnectionAccountInfo = IAccountSelectorSelectedAccount & {
   networkImpl: string;
   accountId: string;
   address: string;
+  num?: number;
 };
 export interface IConnectionItem {
   origin: string;
@@ -25,6 +27,7 @@ export interface IConnectionItem {
     [address in string]: number[];
   };
   walletConnectTopic?: string;
+  updatedAt?: number;
 }
 
 export type IConnectionItemWithAccountSelectorNum = IConnectionItem & {
@@ -65,4 +68,19 @@ export enum EValidateUrlEnum {
   NotSupportProtocol = 'NotSupportProtocol',
   ValidDeeplink = 'ValidDeeplink',
   InvalidPunycode = 'InvalidPunycode',
+}
+
+export type IConnectedAccountInfo = {
+  account: INetworkAccount;
+  accountInfo?: Partial<IConnectionAccountInfo>;
+};
+
+export enum EDAppModalPageStatus {
+  Confirmed = 'Confirmed',
+}
+
+export enum EAlignPrimaryAccountMode {
+  Independent = 'Independent',
+  AlignDappToWallet = 'AlignDappToWallet',
+  // AlwaysUsePrimaryAccount = 'AlwaysUsePrimaryAccount',
 }

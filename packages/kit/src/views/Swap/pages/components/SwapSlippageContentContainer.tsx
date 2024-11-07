@@ -1,27 +1,30 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BigNumber } from 'bignumber.js';
 import { debounce } from 'lodash';
 import { useIntl } from 'react-intl';
-import Animated from 'react-native-reanimated';
 
-import type { IInputProps } from '@onekeyhq/components';
+import type { IDialogInstance, IInputProps } from '@onekeyhq/components';
 import {
+  Button,
+  Dialog,
+  Divider,
   Input,
   SegmentControl,
   SizableText,
+  XStack,
   YStack,
-  useMedia,
-  useSafeKeyboardAnimationStyle,
 } from '@onekeyhq/components';
-import { useSwapSlippagePercentageAtom } from '@onekeyhq/kit/src/states/jotai/contexts/swap';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import {
-  swapSlippageAutoValue,
+  swapSlippageCustomDefaultList,
+  swapSlippageDecimal,
   swapSlippageItems,
   swapSlippageMaxValue,
   swapSlippageWillAheadMinValue,
   swapSlippageWillFailMinValue,
 } from '@onekeyhq/shared/types/swap/SwapProvider.constants';
+import type { ISwapSlippageSegmentItem } from '@onekeyhq/shared/types/swap/types';
 import {
   ESwapSlippageCustomStatus,
   ESwapSlippageSegmentKey,
@@ -29,11 +32,74 @@ import {
 
 import { validateAmountInput } from '../../utils/utils';
 
-const SwapsSlippageContentContainer = () => {
+const BaseSlippageInput = ({
+  swapSlippage,
+  onChangeText,
+  props,
+}: {
+  swapSlippage: ISwapSlippageSegmentItem;
+  onChangeText: (text: string) => void;
+  props?: IInputProps;
+}) => {
   const [inputValue, setInputValue] = useState('');
-  const [swapSlippage, setSwapSlippage] = useSwapSlippagePercentageAtom();
+  const isOriginalNumberDot = useRef(false);
+  const handleTextChange = useCallback(
+    (text: string) => {
+      if (validateAmountInput(text, swapSlippageDecimal)) {
+        isOriginalNumberDot.current = /^\d+\.$/.test(text);
+        setInputValue(text);
+        onChangeText(text);
+      }
+    },
+    [onChangeText],
+  );
+
+  const displaySlippage = useMemo(
+    () =>
+      new BigNumber(swapSlippage.value)
+        .decimalPlaces(swapSlippageDecimal, BigNumber.ROUND_DOWN)
+        .toFixed(),
+    [swapSlippage.value],
+  );
+
+  useEffect(() => {
+    if (!isOriginalNumberDot.current) {
+      setInputValue(displaySlippage);
+    }
+  }, [displaySlippage]);
+
+  return (
+    <Input
+      size="medium"
+      containerProps={{ flex: 1 }}
+      value={inputValue}
+      autoFocus={swapSlippage.key === ESwapSlippageSegmentKey.CUSTOM}
+      addOns={[{ label: '%' }]}
+      textAlign="left"
+      disabled={swapSlippage.key === ESwapSlippageSegmentKey.AUTO}
+      placeholder={displaySlippage}
+      onChangeText={handleTextChange}
+      {...props}
+    />
+  );
+};
+
+const SlippageInput = memo(BaseSlippageInput);
+
+const SwapsSlippageContentContainer = ({
+  swapSlippage,
+  onSave,
+  autoValue,
+}: {
+  swapSlippage: ISwapSlippageSegmentItem;
+  autoValue: number;
+  onSave: (
+    slippage: ISwapSlippageSegmentItem,
+    close: IDialogInstance['close'],
+  ) => void;
+}) => {
+  const [swapSlippageStatus, setSwapSlippageStatus] = useState(swapSlippage);
   const intl = useIntl();
-  const media = useMedia();
 
   const [customValueState, setCustomValueState] = useState<{
     status: ESwapSlippageCustomStatus;
@@ -50,99 +116,153 @@ const SwapsSlippageContentContainer = () => {
       ) {
         setCustomValueState({
           status: ESwapSlippageCustomStatus.ERROR,
-          message: 'Slippage Tolerance must be between 0 to 50%.',
+          message: intl.formatMessage({
+            id: ETranslations.slippage_tolerance_error_message,
+          }),
         });
         return;
       }
+      setSwapSlippageStatus({
+        key: ESwapSlippageSegmentKey.CUSTOM,
+        value: valueBN.toNumber(),
+      });
       if (valueBN.lte(swapSlippageWillFailMinValue)) {
         setCustomValueState({
           status: ESwapSlippageCustomStatus.WRONG,
-          message: 'Your trade may fail due to small slippage.',
+          message: intl.formatMessage(
+            {
+              id: ETranslations.slippage_tolerance_warning_message_2,
+            },
+            { number: swapSlippageWillFailMinValue },
+          ),
         });
+        return;
       }
       if (valueBN.gte(swapSlippageWillAheadMinValue)) {
         setCustomValueState({
           status: ESwapSlippageCustomStatus.WRONG,
-          message: 'High slippage tolerance may cause your asset loss.',
+          message: intl.formatMessage(
+            {
+              id: ETranslations.slippage_tolerance_warning_message_1,
+            },
+            { number: swapSlippageWillAheadMinValue },
+          ),
         });
+        return;
       }
-      setSwapSlippage({
-        key: ESwapSlippageSegmentKey.CUSTOM,
-        value: valueBN.toNumber(),
+      setCustomValueState({
+        status: ESwapSlippageCustomStatus.NORMAL,
+        message: '',
       });
-    }, 200),
+    }, 350),
     [],
   );
 
-  const safeKeyboardAnimationStyle = useSafeKeyboardAnimationStyle();
   return (
-    <Animated.View style={safeKeyboardAnimationStyle}>
-      <YStack p="$4" space="$4">
-        <YStack
-          space="$5"
-          $gtMd={{
-            flexDirection: 'row',
-          }}
+    <YStack gap="$4">
+      <SegmentControl
+        fullWidth
+        value={swapSlippageStatus.key}
+        options={swapSlippageItems.map((item) => ({
+          label: intl.formatMessage({
+            id:
+              item.key === ESwapSlippageSegmentKey.AUTO
+                ? ETranslations.slippage_tolerance_switch_auto
+                : ETranslations.slippage_tolerance_switch_custom,
+          }),
+          value: item.key,
+        }))}
+        onChange={(value) => {
+          const keyValue = value as ESwapSlippageSegmentKey;
+          setSwapSlippageStatus({
+            key: keyValue,
+            value:
+              keyValue === ESwapSlippageSegmentKey.AUTO
+                ? autoValue
+                : swapSlippage.value,
+          });
+        }}
+      />
+      {swapSlippageStatus.key !== ESwapSlippageSegmentKey.CUSTOM ? (
+        <SlippageInput
+          swapSlippage={swapSlippageStatus}
+          onChangeText={handleSlippageChange}
+        />
+      ) : null}
+      {swapSlippageStatus.key === ESwapSlippageSegmentKey.CUSTOM ? (
+        <XStack gap="$2.5">
+          <SlippageInput
+            swapSlippage={swapSlippageStatus}
+            onChangeText={handleSlippageChange}
+          />
+          <XStack>
+            {swapSlippageCustomDefaultList.map((item, index) => (
+              <>
+                <Button
+                  key={item}
+                  variant="secondary"
+                  size="medium"
+                  borderTopRightRadius={index !== 2 ? 0 : '$2'}
+                  borderBottomRightRadius={index !== 2 ? 0 : '$2'}
+                  borderTopLeftRadius={index !== 0 ? 0 : '$2'}
+                  borderBottomLeftRadius={index !== 0 ? 0 : '$2'}
+                  onPress={() => {
+                    setCustomValueState({
+                      status: ESwapSlippageCustomStatus.NORMAL,
+                      message: '',
+                    });
+                    setSwapSlippageStatus({
+                      key: ESwapSlippageSegmentKey.CUSTOM,
+                      value: item,
+                    });
+                  }}
+                >{`${item}${
+                  index === swapSlippageCustomDefaultList.length - 1 ? '  ' : ''
+                }%`}</Button>
+                {index !== swapSlippageCustomDefaultList.length - 1 ? (
+                  <Divider vertical />
+                ) : null}
+              </>
+            ))}
+          </XStack>
+        </XStack>
+      ) : null}
+      {swapSlippageStatus.key === ESwapSlippageSegmentKey.AUTO ? (
+        <SizableText size="$bodyMd" color="$textSubdued">
+          {intl.formatMessage({
+            id: ETranslations.slippage_tolerance_description,
+          })}
+        </SizableText>
+      ) : null}
+      {swapSlippageStatus.key !== ESwapSlippageSegmentKey.AUTO &&
+      customValueState.status !== ESwapSlippageCustomStatus.NORMAL ? (
+        <SizableText
+          size="$bodySmMedium"
+          color={
+            customValueState.status === ESwapSlippageCustomStatus.ERROR
+              ? '$textCritical'
+              : '$textCaution'
+          }
         >
-          <SegmentControl
-            fullWidth={!media.gtMd}
-            value={swapSlippage.key}
-            options={swapSlippageItems.map((item) => ({
-              label: intl.formatMessage({
-                id:
-                  item.key === ESwapSlippageSegmentKey.AUTO
-                    ? 'form__auto'
-                    : 'content__custom',
-              }),
-              value: item.value,
-            }))}
-            onChange={(value) => {
-              const keyValue = value as ESwapSlippageSegmentKey;
-              setSwapSlippage({
-                key: keyValue,
-                value: swapSlippageAutoValue,
-              });
-              if (keyValue === ESwapSlippageSegmentKey.AUTO) {
-                setInputValue(swapSlippageAutoValue.toString());
-              }
-            }}
-          />
-
-          <Input
-            $gtMd={
-              {
-                size: 'small',
-              } as IInputProps['$gtMd']
-            }
-            value={inputValue}
-            autoFocus={swapSlippage.key === ESwapSlippageSegmentKey.CUSTOM}
-            addOns={[{ label: '%' }]}
-            textAlign="right"
-            disabled={swapSlippage.key === ESwapSlippageSegmentKey.AUTO}
-            placeholder={swapSlippage.value.toString()}
-            onChangeText={(text) => {
-              if (validateAmountInput(text)) {
-                setInputValue(text);
-                handleSlippageChange(text);
-              }
-            }}
-          />
-        </YStack>
-        {swapSlippage.key !== ESwapSlippageSegmentKey.AUTO &&
-        customValueState.status !== ESwapSlippageCustomStatus.NORMAL ? (
-          <SizableText
-            size="$bodySmMedium"
-            color={
-              customValueState.status === ESwapSlippageCustomStatus.ERROR
-                ? '$textCritical'
-                : '$textCaution'
-            }
-          >
-            {customValueState.message}
-          </SizableText>
-        ) : null}
-      </YStack>
-    </Animated.View>
+          {customValueState.message}
+        </SizableText>
+      ) : null}
+      <Dialog.Footer
+        showCancelButton={false}
+        onConfirmText={intl.formatMessage({
+          id: ETranslations.slippage_tolerance_button_save,
+        })}
+        confirmButtonProps={{
+          variant: 'primary',
+          disabled:
+            swapSlippageStatus.key === ESwapSlippageSegmentKey.CUSTOM &&
+            customValueState.status === ESwapSlippageCustomStatus.ERROR,
+        }}
+        onConfirm={({ close }) => {
+          onSave(swapSlippageStatus, close);
+        }}
+      />
+    </YStack>
   );
 };
 

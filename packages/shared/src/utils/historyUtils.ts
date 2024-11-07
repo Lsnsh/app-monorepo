@@ -1,11 +1,18 @@
+import { isNil } from 'lodash';
+
+import type { IEncodedTxEvm } from '@onekeyhq/core/src/chains/evm/types';
+
 import { EOnChainHistoryTxStatus } from '../../types/history';
 import { EDecodedTxStatus } from '../../types/tx';
 import { SEARCH_KEY_MIN_LENGTH } from '../consts/walletConsts';
+import { OneKeyInternalError } from '../errors';
+import { ETranslations } from '../locale';
 
 import { formatDate } from './dateUtils';
 
 import type {
   IAccountHistoryTx,
+  IHistoryListSectionGroup,
   IOnChainHistoryTx,
   IOnChainHistoryTxNFT,
   IOnChainHistoryTxToken,
@@ -24,10 +31,12 @@ export function getOnChainHistoryTxStatus(
 }
 
 export function getOnChainHistoryTxAssetInfo({
+  key,
   tokenAddress,
   tokens = {},
   nfts = {},
 }: {
+  key: string;
   tokenAddress: string;
   tokens: Record<string, IOnChainHistoryTxToken>;
   nfts: Record<string, IOnChainHistoryTxNFT>;
@@ -42,12 +51,16 @@ export function getOnChainHistoryTxAssetInfo({
   let isNative = false;
   let price = '0';
   let decimals = 0;
-  nft = nfts[tokenAddress];
-  token = tokens[tokenAddress || 'native'];
+  nft = nfts[key] ?? nfts[tokenAddress];
+  if (tokenAddress === '') {
+    token = tokens[key] ?? tokens[tokenAddress] ?? tokens.native;
+  } else {
+    token = tokens[key] ?? tokens[tokenAddress];
+  }
 
   if (nft) {
-    name = nft.metadata?.name ?? '';
-    symbol = nft.metadata?.name ?? '';
+    name = nft.metadata?.name ?? nft.collectionName ?? '';
+    symbol = nft.metadata?.name ?? nft.collectionSymbol ?? '';
     icon = nft.metadata?.image ?? '';
     address = nft.collectionAddress;
     isNFT = true;
@@ -102,19 +115,19 @@ export function getFilteredHistoryBySearchKey({
           action.functionCall?.to?.toLowerCase().includes(searchKey) ||
           action.unknownAction?.from?.toLowerCase().includes(searchKey) ||
           action.unknownAction?.to?.toLowerCase().includes(searchKey) ||
-          action.assetTransfer?.sends.some(
+          action.assetTransfer?.sends?.some(
             (send) =>
-              send.symbol.toLowerCase() === searchKey ||
+              send.symbol?.toLowerCase() === searchKey ||
               send.from?.toLowerCase().includes(searchKey) ||
               send.to?.toLowerCase().includes(searchKey),
           ) ||
-          action.assetTransfer?.receives.some(
+          action.assetTransfer?.receives?.some(
             (receive) =>
-              receive.symbol.toLowerCase() === searchKey ||
+              receive.symbol?.toLowerCase() === searchKey ||
               receive.from?.toLowerCase().includes(searchKey) ||
               receive.to?.toLowerCase().includes(searchKey),
           ) ||
-          action.tokenApprove?.symbol.toLowerCase() === searchKey,
+          action.tokenApprove?.symbol?.toLowerCase() === searchKey,
       ),
   );
 
@@ -126,41 +139,101 @@ export function getHistoryTxDetailInfo({
   historyTx,
 }: {
   txDetails: IOnChainHistoryTx | undefined;
-  historyTx: IAccountHistoryTx;
+  historyTx: IAccountHistoryTx | undefined;
 }) {
-  const { decodedTx } = historyTx;
-  let date = '';
-  let txid = '';
-  let nonce;
-  let confirmations;
+  const decodedTx = historyTx?.decodedTx;
   let swapInfo;
-  let gasFee = '0';
-  let gasFeeFiatValue = '0';
+  let nonce = txDetails?.nonce;
+  let data = txDetails?.slicedData;
 
-  if (txDetails) {
-    date = formatDate(new Date(txDetails.timestamp * 1000));
-    txid = txDetails.tx;
-    nonce = txDetails.nonce;
-    confirmations = txDetails.confirmations;
-    gasFee = txDetails.gasFee;
-    gasFeeFiatValue = txDetails.gasFeeFiatValue;
-  } else {
-    date = formatDate(
-      new Date(decodedTx.updatedAt ?? decodedTx.createdAt ?? 0),
-    );
-    txid = decodedTx.txid;
+  if (isNil(nonce) && !isNil(decodedTx?.nonce)) {
     nonce = decodedTx.nonce;
-    gasFee = decodedTx.totalFeeInNative ?? '0';
-    gasFeeFiatValue = decodedTx.totalFeeFiatValue ?? '0';
   }
 
+  if (isNil(data) && !isNil((decodedTx?.encodedTx as IEncodedTxEvm)?.data)) {
+    const dataStr = (decodedTx?.encodedTx as IEncodedTxEvm)?.data ?? '';
+    if (dataStr.length > 500) {
+      data = `${dataStr.slice(0, 500)}...`;
+    } else {
+      data = dataStr;
+    }
+  }
+
+  let date = '-';
+
+  if (txDetails?.timestamp) {
+    date = formatDate(new Date(txDetails.timestamp * 1000));
+  } else if (decodedTx?.updatedAt || decodedTx?.createdAt) {
+    date = formatDate(
+      new Date(decodedTx?.updatedAt || decodedTx?.createdAt || 0),
+    );
+  }
+
+  const gasFee = txDetails?.gasFee ?? decodedTx?.totalFeeInNative;
+  const gasFeeFiatValue =
+    txDetails?.gasFeeFiatValue ?? decodedTx?.totalFeeFiatValue;
+  const confirmations = txDetails?.confirmations;
+  const blockHeight = txDetails?.block;
+
   return {
-    txid,
     date,
     nonce,
+    data,
     confirmations,
+    blockHeight,
     swapInfo,
     gasFee,
     gasFeeFiatValue,
   };
+}
+
+// sort history
+export function sortHistoryTxsByTime({ txs }: { txs: IAccountHistoryTx[] }) {
+  return txs.sort(
+    (b, a) =>
+      (a.decodedTx.updatedAt ?? a.decodedTx.createdAt ?? 0) -
+      (b.decodedTx.updatedAt ?? b.decodedTx.createdAt ?? 0),
+  );
+}
+
+export function convertToSectionGroups(params: {
+  formatDate: (date: number) => string;
+  items: IAccountHistoryTx[];
+}): IHistoryListSectionGroup[] {
+  const { items, formatDate: formatDateFn } = params;
+  let pendingGroup: IHistoryListSectionGroup | undefined = {
+    titleKey: ETranslations.global_pending,
+    data: [],
+  };
+  const dateGroups: IHistoryListSectionGroup[] = [];
+  let currentDateGroup: IHistoryListSectionGroup | undefined;
+  items.forEach((item) => {
+    if (item.decodedTx.status === EDecodedTxStatus.Pending) {
+      pendingGroup?.data.push(item);
+    } else {
+      const dateKey = formatDateFn(
+        item.decodedTx.updatedAt || item.decodedTx.createdAt || 0,
+      );
+      if (!currentDateGroup || currentDateGroup.title !== dateKey) {
+        if (currentDateGroup) {
+          dateGroups.push(currentDateGroup);
+        }
+        currentDateGroup = {
+          title: dateKey,
+          data: [],
+        };
+      }
+      currentDateGroup.data.push(item);
+    }
+  });
+  if (currentDateGroup) {
+    dateGroups.push(currentDateGroup);
+  }
+  if (!pendingGroup.data.length) {
+    pendingGroup = undefined;
+  }
+  if (pendingGroup) {
+    return [pendingGroup, ...dateGroups].filter(Boolean);
+  }
+  return [...dateGroups].filter(Boolean);
 }

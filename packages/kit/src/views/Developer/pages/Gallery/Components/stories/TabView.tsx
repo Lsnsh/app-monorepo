@@ -1,15 +1,18 @@
 import { useMemo } from 'react';
 
-import { ListView, SizableText, Stack, Tab, Toast } from '@onekeyhq/components';
+import {
+  IconButton,
+  ListView,
+  SizableText,
+  Stack,
+  Tab,
+  Toast,
+} from '@onekeyhq/components';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
 import { Layout } from './utils/Layout';
 
-const FirstRoute = ({
-  onContentSizeChange,
-}: {
-  onContentSizeChange: ((w: number, h: number) => void) | undefined;
-}) => (
+const FirstRoute = () => (
   <ListView
     data={new Array(20).fill({})}
     estimatedItemSize="$10"
@@ -20,15 +23,10 @@ const FirstRoute = ({
         <SizableText>Page 1 Row: {index}</SizableText>
       </Stack>
     )}
-    onContentSizeChange={onContentSizeChange}
   />
 );
 
-const SecondRoute = ({
-  onContentSizeChange,
-}: {
-  onContentSizeChange: ((w: number, h: number) => void) | undefined;
-}) => (
+const SecondRoute = () => (
   <ListView
     data={new Array(50).fill({})}
     estimatedItemSize="$10"
@@ -39,7 +37,6 @@ const SecondRoute = ({
         <SizableText>Page 2 Row: {index}</SizableText>
       </Stack>
     )}
-    onContentSizeChange={onContentSizeChange}
   />
 );
 
@@ -62,8 +59,7 @@ const TabViewScrollStickyDemo = () => {
       data={data}
       initialScrollIndex={1}
       ListHeaderComponent={<Stack bg="$bgInfoStrong" h={100} />}
-      // style={{ width: 400, height: 600, backgroundColor: 'black' }}
-      h={600}
+      style={{ height: 400 }}
       headerProps={{
         itemContainerStyle: { flex: 1 },
         cursorStyle: { width: '70%', h: '$0.5', bg: '$text' },
@@ -144,7 +140,7 @@ const TabViewGallery = () => (
   <Layout
     description=""
     suggestions={[
-      '吸顶用 Tab, 它继承自 ScrollView, 请记得 onContentSizeChange, 关掉 data 里面每个 page 的 scrollEnabled 和 disableScrollViewPanResponder',
+      '吸顶用 Tab',
       '不需要吸顶用 Tab.Page, 它继承自 Fragment, 尽量不要把 Tab.Page 放到 ScrollView 里面',
     ]}
     boundaryConditions={[]}
@@ -166,32 +162,6 @@ const TabViewGallery = () => (
         ),
       },
       {
-        title: 'Header 自定义2',
-        element: (
-          <Tab.Header
-            data={[
-              { title: '标签1' },
-              { title: '标签2' },
-              { title: '标签标签3' },
-              { title: '标签4' },
-            ]}
-            itemContainerStyle={{ flex: 1 }}
-            itemTitleNormalStyle={{ color: '$text', fontSize: 13 }}
-            itemTitleSelectedStyle={{ color: '$textInverse', fontSize: 15 }}
-            cursorStyle={{
-              width: 88,
-              height: 34,
-              borderRadius: 34 / 2.0,
-              top: 5,
-              bg: '$bgInfoStrong',
-            }}
-            onSelectedPageIndex={(index: number) => {
-              console.log('选中', index);
-            }}
-          />
-        ),
-      },
-      {
         title: 'Tab 需要吸顶使用',
         element: <TabViewScrollStickyDemo />,
       },
@@ -200,6 +170,50 @@ const TabViewGallery = () => (
         element: (
           <Stack h={700}>
             <TabViewScrollPageDemo />
+          </Stack>
+        ),
+      },
+      {
+        title: 'Custom tabview for swap',
+        element: (
+          <Stack>
+            <Tab.Header
+              style={{
+                height: '$8',
+                borderBottomWidth: 0,
+              }}
+              data={[
+                { title: 'Swap' },
+                { title: 'Bridge' },
+                { title: 'Limit' },
+              ]}
+              itemContainerStyle={{
+                px: '$2.5',
+                mr: '$3',
+                cursor: 'default',
+              }}
+              itemTitleNormalStyle={{
+                color: '$textSubdued',
+                fontWeight: '600',
+              }}
+              itemTitleSelectedStyle={{ color: '$text' }}
+              cursorStyle={{
+                height: '100%',
+                bg: '$bgStrong',
+                borderRadius: '$3',
+                borderCurve: 'continuous',
+              }}
+              onSelectedPageIndex={(index: number) => {
+                console.log('选中', index);
+              }}
+            />
+            <IconButton
+              variant="tertiary"
+              icon="InfoCircleOutline"
+              position="absolute"
+              right="$0"
+              top="$1"
+            />
           </Stack>
         ),
       },

@@ -9,7 +9,7 @@ import AdmZip from 'adm-zip';
 import Axios from 'axios';
 import { dialog, ipcMain, shell } from 'electron';
 import isDev from 'electron-is-dev';
-import logger from 'electron-log';
+import logger from 'electron-log/main';
 
 import { ipcMessageKeys } from '../config';
 
@@ -113,7 +113,7 @@ const init = ({ mainWindow }: { mainWindow: BrowserWindow }) => {
 
           wmic.stdout.on('data', (buffer: Buffer) => {
             let data = buffer.toString('utf8');
-            logger.info('wmic stdout =====> ', data);
+            // logger.info('wmic stdout =====> ', data);
             data = data.replace(/DeviceID/g, '');
             data = data.replace(/VolumeName/g, '');
             const array = [...data].filter(
@@ -227,7 +227,6 @@ const init = ({ mainWindow }: { mainWindow: BrowserWindow }) => {
   const SourceFolder = path.join(resourcePath, 'res/res');
 
   const downloadFile = (fileUrl: string) => {
-    logger.info('process: ', process.env);
     logger.info('resource path: ', resourcePath);
     if (!fs.existsSync(resourcePath)) {
       logger.info('create resource path start');

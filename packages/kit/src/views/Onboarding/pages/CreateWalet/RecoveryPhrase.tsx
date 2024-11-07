@@ -1,18 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { useRoute } from '@react-navigation/core';
+import wordLists from 'bip39/src/wordlists/english.json';
+import { shuffle } from 'lodash';
+import { useIntl } from 'react-intl';
 
 import type { IPropsWithTestId } from '@onekeyhq/components';
 import {
-  Button,
-  Input,
+  ActionList,
+  Dialog,
   Page,
+  SecureView,
   SizableText,
   Stack,
+  Toast,
   XStack,
   useClipboard,
-  useMedia,
 } from '@onekeyhq/components';
+import { HeaderIconButton } from '@onekeyhq/components/src/layouts/Navigation/Header';
 import {
   ensureSensitiveTextEncoded,
   generateMnemonic,
@@ -20,11 +25,9 @@ import {
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
 import { usePromiseResult } from '@onekeyhq/kit/src/hooks/usePromiseResult';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type { IOnboardingParamList } from '@onekeyhq/shared/src/routes';
 import { EOnboardingPages } from '@onekeyhq/shared/src/routes';
-
-import { Tutorials } from '../../components';
-import { useShowCopyPasteButton } from '../../components/hooks';
 
 import type { RouteProp } from '@react-navigation/core';
 
@@ -33,40 +36,39 @@ function FocusDisplayInput({
   index,
   testID = '',
 }: IPropsWithTestId<{ text: string; index: number }>) {
-  const media = useMedia();
-  // Show the first word when entering the page
-  const [isFocused, setIsFocused] = useState(index === 0);
-  const handleFocus = useCallback(() => {
-    setIsFocused(true);
-  }, []);
-  const handleBlur = useCallback(() => {
-    setIsFocused(false);
-  }, []);
   return (
-    <Input
-      caretHidden
-      autoFocus={index === 0}
-      showSoftInputOnFocus={false}
-      keyboardType="numeric"
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-      value={isFocused ? text : '••••'}
-      editable={false}
-      size={media.md ? 'large' : 'medium'}
-      leftAddOnProps={{
-        label: `${index + 1}`,
-        minWidth: '$10',
-        justifyContent: 'center',
+    <XStack
+      px="$2"
+      py="$1.5"
+      bg="$bgDisabled"
+      bw="$px"
+      borderColor="$border"
+      borderRadius="$2"
+      $md={{
+        px: '$3',
+        py: '$2',
+        borderRadius: '$3',
       }}
-      testID={testID}
-    />
+    >
+      <SizableText
+        userSelect="none"
+        minWidth="$7"
+        color="$textSubdued"
+        $md={{ minWidth: '$8' }}
+      >
+        {index + 1}
+      </SizableText>
+      <SizableText selectable testID={testID}>
+        {text}
+      </SizableText>
+    </XStack>
   );
 }
 
 export function RecoveryPhrase() {
+  const intl = useIntl();
   const navigation = useAppNavigation();
   const { copyText } = useClipboard();
-  const isShowCopyPasteButton = useShowCopyPasteButton();
   const { servicePassword } = backgroundApiProxy;
 
   const route =
@@ -94,71 +96,163 @@ export function RecoveryPhrase() {
     [mnemonic],
   );
 
+  const verifyRecoveryPhrases = useMemo(() => {
+    if (route.params?.isBackup) {
+      return [];
+    }
+    const shufflePhrasesIndex = shuffle(
+      Array(phrases.length)
+        .fill(0)
+        .map((_, index) => index),
+    ).slice(0, 3);
+    const shufflePhrases = shufflePhrasesIndex.map((i) => phrases[i]);
+    const length = wordLists.length;
+    const confuseWords: string[] = [];
+    const getConfuseWord: () => string = () => {
+      // eslint-disable-next-line no-bitwise
+      const index = (Math.random() * length) >> 1;
+      const word = wordLists[index];
+      if (shufflePhrases.includes(word) || confuseWords.includes(word)) {
+        return getConfuseWord();
+      }
+      return word;
+    };
+    for (let i = 0; i < 6; i += 1) {
+      confuseWords.push(getConfuseWord());
+    }
+    return shufflePhrases
+      .map((word, index) => [
+        shufflePhrasesIndex[index],
+        shuffle([
+          shufflePhrases[index],
+          ...confuseWords.slice(index * 2, index * 2 + 2),
+        ]),
+      ])
+      .sort((a, b) => (a[0] as number) - (b[0] as number));
+  }, [phrases, route.params?.isBackup]);
+
   const handleConfirmPress = useCallback(async () => {
+    if (route.params?.isBackup) {
+      Toast.success({
+        title: intl.formatMessage({
+          id: ETranslations.backup_recovery_phrase_backed_up,
+        }),
+      });
+      navigation.popStack();
+      return;
+    }
     navigation.push(EOnboardingPages.VerifyRecoverPhrase, {
       mnemonic: await servicePassword.encodeSensitiveText({
         text: mnemonic,
       }),
       isBackup: route.params?.isBackup,
+      verifyRecoveryPhrases,
     });
-  }, [mnemonic, navigation, route.params?.isBackup, servicePassword]);
+  }, [
+    intl,
+    mnemonic,
+    navigation,
+    route.params?.isBackup,
+    servicePassword,
+    verifyRecoveryPhrases,
+  ]);
+
+  const headerRight = useCallback(
+    () => (
+      <ActionList
+        title={intl.formatMessage({ id: ETranslations.global_more })}
+        renderTrigger={
+          <HeaderIconButton
+            icon="DotHorOutline"
+            testID="copy-recovery-phrase-icon"
+          />
+        }
+        items={[
+          {
+            testID: 'copy-recovery-phrase-button',
+            label: intl.formatMessage({
+              id: ETranslations.global_copy_recovery_phrase,
+            }),
+            icon: 'Copy3Outline',
+            onPress: () => {
+              Dialog.show({
+                icon: 'ErrorOutline',
+                tone: 'destructive',
+                title: intl.formatMessage({
+                  id: ETranslations.copy_recovery_phrases_warning_title,
+                }),
+                description: intl.formatMessage({
+                  id: ETranslations.copy_recovery_phrases_warning_desc,
+                }),
+                footerProps: {
+                  flexDirection: 'row-reverse',
+                },
+                onConfirmText: intl.formatMessage({
+                  id: ETranslations.copy_anyway,
+                }),
+                onConfirm: () => {
+                  copyText(mnemonic);
+                },
+                confirmButtonProps: {
+                  testID: 'copy-recovery-phrase-confirm',
+                  variant: 'secondary',
+                },
+                onCancelText: intl.formatMessage({
+                  id: ETranslations.global_cancel_copy,
+                }),
+                cancelButtonProps: {
+                  testID: 'copy-recovery-phrase-cancel',
+                  variant: 'primary',
+                },
+              });
+            },
+          },
+        ]}
+      />
+    ),
+    [copyText, intl, mnemonic],
+  );
 
   return (
     <Page scrollEnabled>
-      <Page.Header title="Write Down Your Phrases" />
+      <Page.Header
+        title={intl.formatMessage({
+          id: ETranslations.onboarding_backup_recovery_phrase_title,
+        })}
+        headerRight={headerRight}
+      />
       <Page.Body p="$5" pt="$0">
-        <SizableText pt="$2" pb="$4" px="$1" size="$headingMd">
-          Tap to display words and write down your phrases in order
+        <SizableText pt="$2" pb="$4" px="$1" color="$textSubdued">
+          {intl.formatMessage({
+            id: ETranslations.onboarding_backup_recovery_phrase_help_text,
+          })}
         </SizableText>
 
-        <XStack flexWrap="wrap" mx="$-1">
-          {phrases.map((phrase, index) => (
-            <Stack
-              key={index}
-              $md={{
-                flexBasis: '50%',
-              }}
-              flexBasis="33.33%"
-              p="$1"
-            >
-              <FocusDisplayInput
-                text={phrase}
-                index={index}
-                testID={`phrase-index${index}`}
-              />
-            </Stack>
-          ))}
-        </XStack>
-
-        {isShowCopyPasteButton ? (
-          <XStack px="$5" py="$2">
-            <Button
-              size="small"
-              variant="tertiary"
-              onPress={async () => {
-                copyText(mnemonic);
-              }}
-            >
-              Copy All(Only in Dev)
-            </Button>
+        <SecureView>
+          <XStack flexWrap="wrap" mx="$-1">
+            {phrases.map((phrase, index) => (
+              <Stack
+                key={index}
+                $md={{
+                  flexBasis: '50%',
+                }}
+                flexBasis="33.33%"
+                p="$1"
+              >
+                <FocusDisplayInput
+                  text={phrase}
+                  index={index}
+                  testID={`phrase-index${index}`}
+                />
+              </Stack>
+            ))}
           </XStack>
-        ) : null}
-
-        <Tutorials
-          list={[
-            {
-              title: "Why Can't I Copy Multiple Phrases?",
-              description: 'Mass copying is disabled for clipboard security.',
-            },
-            {
-              title: 'Why One Word at a Time?',
-              description: 'One-word display combats screen recording threats.',
-            },
-          ]}
-        />
+        </SecureView>
       </Page.Body>
       <Page.Footer
-        onConfirmText="I've Saved the Phrase"
+        onConfirmText={intl.formatMessage({
+          id: ETranslations.global_saved_the_phrases,
+        })}
         onConfirm={handleConfirmPress}
         confirmButtonProps={{ testID: 'saved-the-phrase' }}
       />

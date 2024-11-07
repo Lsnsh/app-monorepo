@@ -28,13 +28,36 @@ const VerifyRecoveryPhrase = LazyLoadPage(
 );
 
 const ConnectWallet = LazyLoadPage(() => import('../pages/ConnectWallet'));
+const ConnectWalletSelectNetworks = LazyLoadPage(
+  () => import('../pages/ConnectWalletSelectNetworks'),
+);
 const FinalizeWalletSetup = LazyLoadPage(
   () => import('../pages/FinalizeWalletSetup'),
 );
+
 const GetStarted = LazyLoadPage(() => import('../pages/GetStarted'));
+
+const V4MigrationGetStarted = LazyLoadPage(
+  () => import('../pages/V4Migration/V4MigrationGetStarted'),
+);
+
+const V4MigrationPreview = LazyLoadPage(
+  () => import('../pages/V4Migration/V4MigrationPreview'),
+);
+
+const V4MigrationProcess = LazyLoadPage(
+  () => import('../pages/V4Migration/V4MigrationProcess'),
+);
+
+const V4MigrationDone = LazyLoadPage(
+  () => import('../pages/V4Migration/V4MigrationDone'),
+);
 
 const ImportAddress = LazyLoadPage(
   () => import('../pages/ImportWallet/ImportAddress'),
+);
+const ImportCloudBackup = LazyLoadPage(
+  () => import('../pages/ImportWallet/ImportCloudBackup'),
 );
 
 const ImportPrivateKey = LazyLoadPage(
@@ -49,6 +72,10 @@ const ImportWalletOptions = LazyLoadPage(
   () => import('../pages/ImportWallet/ImportWalletOptions'),
 );
 
+const ImportKeyTag = LazyLoadPage(
+  () => import('../pages/ImportWallet/ImportKeyTag'),
+);
+
 export const OnboardingRouter: IModalFlowNavigatorConfig<
   EOnboardingPages,
   IOnboardingParamList
@@ -56,6 +83,24 @@ export const OnboardingRouter: IModalFlowNavigatorConfig<
   {
     name: EOnboardingPages.GetStarted,
     component: GetStarted,
+  },
+
+  // v4 migration
+  {
+    name: EOnboardingPages.V4MigrationGetStarted,
+    component: V4MigrationGetStarted,
+  },
+  {
+    name: EOnboardingPages.V4MigrationPreview,
+    component: V4MigrationPreview,
+  },
+  {
+    name: EOnboardingPages.V4MigrationProcess,
+    component: V4MigrationProcess,
+  },
+  {
+    name: EOnboardingPages.V4MigrationDone,
+    component: V4MigrationDone,
   },
 
   // connect hardware wallet
@@ -91,10 +136,15 @@ export const OnboardingRouter: IModalFlowNavigatorConfig<
   {
     name: EOnboardingPages.ImportWalletOptions,
     component: ImportWalletOptions,
+    shouldPopOnClickBackdrop: true,
   },
   {
     name: EOnboardingPages.ImportRecoveryPhrase,
     component: ImportRecoveryPhrase,
+  },
+  {
+    name: EOnboardingPages.ImportKeyTag,
+    component: ImportKeyTag,
   },
   {
     name: EOnboardingPages.ImportPrivateKey,
@@ -104,16 +154,25 @@ export const OnboardingRouter: IModalFlowNavigatorConfig<
     name: EOnboardingPages.ImportAddress,
     component: ImportAddress,
   },
+  {
+    name: EOnboardingPages.ImportCloudBackup,
+    component: ImportCloudBackup,
+  },
 
   // connect 3rd-party wallet
   {
     name: EOnboardingPages.ConnectWallet,
     component: ConnectWallet,
   },
+  {
+    name: EOnboardingPages.ConnectWalletSelectNetworks,
+    component: ConnectWalletSelectNetworks,
+  },
 
   // finalize wallet setup
   {
     name: EOnboardingPages.FinalizeWalletSetup,
     component: FinalizeWalletSetup,
+    allowDisableClose: true,
   },
 ];

@@ -17,6 +17,7 @@ function SectionHeading({
   return (
     <Heading
       size="$headingLg"
+      userSelect="none"
       py="$2.5"
       {...(!selected && {
         opacity: 0.5,
@@ -36,16 +37,20 @@ function SectionButton({ children, ...rest }: IButtonProps) {
   );
 }
 
-export function DashboardSectionHeader({ children, ...rest }: IXStackProps) {
+export function DashboardSectionHeader({
+  children,
+  showSectionHeaderBorder = true,
+  ...rest
+}: IXStackProps & { showSectionHeaderBorder?: boolean }) {
   return (
     <XStack
       alignItems="center"
-      space="$5"
+      gap="$5"
       userSelect="none"
       $gtMd={{
         pt: '$1',
         mt: '$1',
-        borderTopWidth: 1,
+        borderTopWidth: showSectionHeaderBorder ? 1 : 0,
         borderColor: '$borderSubdued',
       }}
       {...rest}

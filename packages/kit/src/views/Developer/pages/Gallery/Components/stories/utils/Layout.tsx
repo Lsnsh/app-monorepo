@@ -1,7 +1,10 @@
 import type { ComponentType, ReactElement } from 'react';
 
+import { StackActions } from '@react-navigation/native';
+
 import {
   Button,
+  IconButton,
   Page,
   ScrollView,
   SizableText,
@@ -10,6 +13,12 @@ import {
 } from '@onekeyhq/components';
 import { useKeyboardHeight } from '@onekeyhq/components/src/hooks';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
+import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
+import {
+  ERootRoutes,
+  ETabDeveloperRoutes,
+  ETabRoutes,
+} from '@onekeyhq/shared/src/routes';
 
 const FormattedText = ({ text }: { text: string | string[] }) => {
   if (typeof text === 'string') {
@@ -24,7 +33,7 @@ const FormattedText = ({ text }: { text: string | string[] }) => {
   }
   return (
     <Stack>
-      <Stack space="$1">
+      <Stack gap="$1">
         {text.map((item, index) => (
           <Stack key={index.toString()}>
             <SizableText>
@@ -66,6 +75,7 @@ export function Layout({
   }[];
 }>) {
   const keyboardHeight = useKeyboardHeight();
+  const navigation = useAppNavigation();
   return (
     <Page skipLoading={skipLoading}>
       <ScrollView
@@ -81,9 +91,27 @@ export function Layout({
         keyboardDismissMode="on-drag"
         contentInsetAdjustmentBehavior={contentInsetAdjustmentBehavior}
       >
-        <Stack marginHorizontal="auto" maxWidth="100%" width={576} space="$6">
+        <Stack marginHorizontal="auto" maxWidth="100%" width={576} gap="$6">
           <XStack>
+            <IconButton
+              icon="HomeLineOutline"
+              onPress={() => {
+                // refresh page lost navigation back button, so add it here
+                navigation.dispatch(
+                  StackActions.replace(ERootRoutes.Main, {
+                    screen: ETabRoutes.Developer,
+                    params: {
+                      screen: ETabDeveloperRoutes.TabDeveloper,
+                    },
+                  }),
+                );
+                // navigation.navigate();
+                // navigation.navigate('Home');
+                // urlAccountNavigation.replaceHomePage(navigation);
+              }}
+            />
             <Button
+              ml="$4"
               onPress={async () => {
                 await backgroundApiProxy.serviceSetting.setTheme('light');
               }}
@@ -101,7 +129,7 @@ export function Layout({
             </Button>
           </XStack>
           {description ? (
-            <Stack space="$2">
+            <Stack gap="$2">
               <Stack>
                 <SizableText size="$headingXl">使用说明</SizableText>
               </Stack>
@@ -111,7 +139,7 @@ export function Layout({
             </Stack>
           ) : null}
           {suggestions ? (
-            <Stack space="$2">
+            <Stack gap="$2">
               <Stack>
                 <SizableText size="$headingXl">使用建议</SizableText>
               </Stack>
@@ -119,21 +147,21 @@ export function Layout({
             </Stack>
           ) : null}
           {boundaryConditions?.length > 0 ? (
-            <Stack space="$2">
+            <Stack gap="$2">
               <Stack>
                 <SizableText size="$headingXl">注意事项</SizableText>
               </Stack>
               <FormattedText text={boundaryConditions} />
             </Stack>
           ) : null}
-          <Stack space="$2">
+          <Stack gap="$2">
             <Stack>
               <SizableText size="$headingXl">组件案例</SizableText>
             </Stack>
             <Stack>
               {elements?.map((item, index) => (
                 <Stack
-                  space="$2"
+                  gap="$2"
                   key={`elements-${index}`}
                   pb="$8"
                   mb="$8"
@@ -159,7 +187,7 @@ export function Layout({
               ))}
             </Stack>
             <Stack>
-              {children ? <Stack space="$3">{children}</Stack> : null}
+              {children ? <Stack gap="$3">{children}</Stack> : null}
             </Stack>
           </Stack>
         </Stack>

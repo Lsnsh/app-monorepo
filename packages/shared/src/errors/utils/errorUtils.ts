@@ -1,11 +1,18 @@
-import { isString, isUndefined, omitBy } from 'lodash';
+import { isObject, isPlainObject, isString, isUndefined, omitBy } from 'lodash';
 
-import type { ILocaleIds } from '@onekeyhq/shared/src/locale';
+import type {
+  ETranslations,
+  ETranslationsMock,
+} from '@onekeyhq/shared/src/locale';
 
 import { appLocale } from '../../locale/appLocale';
 import platformEnv from '../../platformEnv';
 
-import type { IOneKeyError } from '../types/errorTypes';
+import type {
+  EOneKeyErrorClassNames,
+  IOneKeyError,
+  IOneKeyHardwareErrorPayload,
+} from '../types/errorTypes';
 import type { MessageDescriptor } from 'react-intl';
 
 // TODO also update JsBridgeBase.toPlainError
@@ -28,6 +35,7 @@ export function toPlainErrorObject(error: IOneKeyError) {
       code: error.code,
       message: error.message,
       autoToast: error.autoToast,
+      requestId: error.requestId,
       data: error.data,
       info: error.info,
       payload: error.payload,
@@ -91,21 +99,29 @@ export const errorsIntlFormatter: {
   formatMessage: undefined,
 };
 
+export function getDeviceErrorPayloadMessage(
+  payload: IOneKeyHardwareErrorPayload,
+) {
+  return payload.error || payload.message || '';
+}
+
 export function normalizeErrorProps(
   props?: IOneKeyError | string,
   config?: {
-    defaultMessage?: string;
-    defaultKey?: ILocaleIds;
+    defaultMessage?: string | ETranslations;
+    defaultKey?: ETranslations | ETranslationsMock;
     defaultAutoToast?: boolean;
     alwaysAppendDefaultMessage?: boolean;
   },
 ): IOneKeyError {
+  // props.message
   let msg: string | undefined = isString(props) ? props : props?.message;
+
+  // i18n message
   const key =
     (isString(props) ? undefined : props?.key) ||
     config?.defaultKey ||
     undefined;
-
   if (!msg && key && appLocale.intl.formatMessage && !platformEnv.isJest) {
     msg = appLocale.intl.formatMessage(
       { id: key },
@@ -115,7 +131,18 @@ export function normalizeErrorProps(
       msg = [config?.defaultMessage, key].filter(Boolean).join(' ');
     }
   }
-  msg = msg || config?.defaultMessage || '';
+
+  // device error message
+  if (!msg && isObject(props) && props.payload) {
+    msg = getDeviceErrorPayloadMessage(props.payload);
+  }
+
+  // fallback to default message
+  if (!msg && config?.defaultMessage) {
+    msg = config?.defaultMessage;
+  }
+
+  msg = msg || '';
 
   if (config?.alwaysAppendDefaultMessage) {
     if (config?.defaultMessage) {
@@ -127,6 +154,40 @@ export function normalizeErrorProps(
     message: msg,
     key,
     autoToast: (props as IOneKeyError)?.autoToast ?? config?.defaultAutoToast,
+    requestId: (props as IOneKeyError)?.requestId,
     ...(isString(props) ? {} : props),
   };
 }
+
+function autoPrintErrorIgnore(error: unknown | undefined) {
+  const e = error as IOneKeyError | undefined;
+  if (e) {
+    // disable autoLogger Error in DEV
+    e.$$autoPrintErrorIgnore = true;
+  }
+}
+
+function isErrorByClassName({
+  error,
+  className,
+}: {
+  error: unknown;
+  className: EOneKeyErrorClassNames | EOneKeyErrorClassNames[];
+}): boolean {
+  const classNames: EOneKeyErrorClassNames[] = (
+    [] as EOneKeyErrorClassNames[]
+  ).concat(className);
+  const errorClassName = (error as IOneKeyError)?.className;
+  return Boolean(errorClassName && classNames.includes(errorClassName));
+}
+
+export default {
+  autoPrintErrorIgnore,
+  normalizeErrorProps,
+  safeConsoleLogError,
+  toPlainErrorObject,
+  interceptConsoleErrorWithExtraInfo,
+  errorsIntlFormatter,
+  getDeviceErrorPayloadMessage,
+  isErrorByClassName,
+};

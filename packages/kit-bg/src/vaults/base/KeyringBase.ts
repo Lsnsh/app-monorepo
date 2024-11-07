@@ -3,6 +3,8 @@ import { isNil } from 'lodash';
 
 import type { CoreChainApiBase } from '@onekeyhq/core/src/base/CoreChainApiBase';
 import type { ISignedMessagePro, ISignedTxPro } from '@onekeyhq/core/src/types';
+import { NotImplemented } from '@onekeyhq/shared/src/errors';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
 import accountUtils from '@onekeyhq/shared/src/utils/accountUtils';
 import timerUtils from '@onekeyhq/shared/src/utils/timerUtils';
 
@@ -19,12 +21,17 @@ import type {
   IDBVariantAccount,
 } from '../../dbs/local/types';
 import type {
+  IBuildHwAllNetworkPrepareAccountsParams,
+  IBuildPrepareAccountsPrefixedPathParams,
+  IExportAccountSecretKeysParams,
+  IExportAccountSecretKeysResult,
   IPrepareAccountsParams,
   IPrepareHdAccountsOptions,
   IPrepareHdAccountsParamsBase,
   ISignMessageParams,
   ISignTransactionParams,
 } from '../types';
+import type { AllNetworkAddressParams } from '@onekeyfe/hd-core';
 
 export abstract class KeyringBase extends VaultContext {
   constructor(vault: VaultBase) {
@@ -85,7 +92,8 @@ export abstract class KeyringBase extends VaultContext {
     });
     const ret: Array<IDBSimpleAccount | IDBVariantAccount> = [];
     for (let idx = 0; idx < addressInfos.length; idx += 1) {
-      const { path, publicKey, address, addresses } = addressInfos[idx];
+      const { path, publicKey, address, addresses, relPath } =
+        addressInfos[idx];
       if (!path) {
         throw new Error('KeyringHD prepareAccounts ERROR: path not found');
       }
@@ -97,7 +105,12 @@ export abstract class KeyringBase extends VaultContext {
       }
 
       const pathIndex = usedIndexes[idx];
-      const name = names?.[idx] || `${namePrefix} #${pathIndex + 1}`;
+      const name =
+        names?.[idx] ||
+        accountUtils.buildHDAccountName({
+          pathIndex,
+          namePrefix,
+        });
 
       const id = accountUtils.buildHDAccountId({
         walletId,
@@ -116,6 +129,7 @@ export abstract class KeyringBase extends VaultContext {
         type: accountType,
         path,
         pathIndex,
+        relPath,
         indexedAccountId,
         coinType, // TODO save deriveType to account
         impl: settings.impl,
@@ -137,7 +151,8 @@ export abstract class KeyringBase extends VaultContext {
     if (!walletId) {
       throw new Error('walletId is undefined');
     }
-    const { indexes, deriveInfo, names, skipCheckAccountExist } = params;
+    // v5 do not check prev account used, so skipCheckAccountExist is always true
+    const { indexes, deriveInfo, names, skipCheckAccountExist = true } = params;
     const { coinType, template, namePrefix } = deriveInfo;
     if (!coinType) {
       throw new Error('coinType is not defined');
@@ -152,14 +167,19 @@ export abstract class KeyringBase extends VaultContext {
 
     const { checkIsAccountUsed, buildAddressesInfo } = options;
 
-    const ignoreFirst = indexes[0] !== 0;
+    // const ignoreFirst = indexes[0] !== 0;
+    const ignoreFirst = false; // v5 do not check prev account used
+
     // check first prev non-zero index account existing
     const usedIndexes = [...(ignoreFirst ? [indexes[0] - 1] : []), ...indexes];
 
+    defaultLogger.account.accountCreatePerf.utxoBuildAddressesInfo();
     const addressesInfo = await buildAddressesInfo({
       usedIndexes,
     });
+    defaultLogger.account.accountCreatePerf.utxoBuildAddressesInfoDone();
 
+    defaultLogger.account.accountCreatePerf.buildDBUtxoAccounts();
     const ret: IDBUtxoAccount[] = [];
     let idx = 0;
     for (const {
@@ -185,6 +205,7 @@ export abstract class KeyringBase extends VaultContext {
       const prefix = namePrefix;
       const pathIndex = usedIndexes[idx];
       const name = names?.[idx] || `${prefix} #${pathIndex + 1}`;
+      // TODO use accountUtils.buildHDAccountId
       const id = `${this.walletId}--${path}`;
       if (!ignoreFirst || idx > 0) {
         const indexedAccountId = accountUtils.buildIndexedAccountId({
@@ -230,7 +251,16 @@ export abstract class KeyringBase extends VaultContext {
 
       idx += 1;
     }
+    defaultLogger.account.accountCreatePerf.buildDBUtxoAccountsDone();
+
     return ret;
+  }
+
+  async batchGetAddresses(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    params: IPrepareAccountsParams,
+  ): Promise<{ address: string; path: string }[]> {
+    return [];
   }
 
   abstract signTransaction(
@@ -242,6 +272,25 @@ export abstract class KeyringBase extends VaultContext {
   abstract prepareAccounts(
     params: IPrepareAccountsParams,
   ): Promise<IDBAccount[]>;
+
+  async exportAccountSecretKeys(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    params: IExportAccountSecretKeysParams,
+  ): Promise<IExportAccountSecretKeysResult> {
+    throw new NotImplemented();
+  }
+
+  async buildHwAllNetworkPrepareAccountsParams(
+    params: IBuildHwAllNetworkPrepareAccountsParams,
+  ): Promise<AllNetworkAddressParams | undefined> {
+    return undefined;
+  }
+
+  buildPrepareAccountsPrefixedPath(
+    params: IBuildPrepareAccountsPrefixedPathParams,
+  ): string {
+    throw new NotImplemented();
+  }
 }
 
 // @ts-ignore

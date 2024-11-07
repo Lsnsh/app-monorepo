@@ -7,10 +7,10 @@ import {
   Dialog,
   Input,
   Page,
-  Skeleton,
   SortableListView,
   Toast,
   XStack,
+  useMedia,
 } from '@onekeyhq/components';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
@@ -20,7 +20,11 @@ import {
   useBrowserAction,
   useBrowserBookmarkAction,
 } from '@onekeyhq/kit/src/states/jotai/contexts/discovery';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
+import { EEnterMethod } from '@onekeyhq/shared/src/logger/scopes/discovery/scenes/dapp';
 
+import { DiscoveryIcon } from '../../components/DiscoveryIcon';
 import { withBrowserProvider } from '../Browser/WithBrowserProvider';
 
 import type { IBrowserBookmark } from '../../types';
@@ -51,7 +55,9 @@ function BookmarkListModal() {
   const onRename = useCallback(
     (item: IBrowserBookmark) => {
       Dialog.confirm({
-        title: 'Rename',
+        title: intl.formatMessage({
+          id: ETranslations.explore_rename,
+        }),
         renderContent: (
           <Dialog.Form
             formProps={{
@@ -63,15 +69,9 @@ function BookmarkListModal() {
               rules={{
                 required: {
                   value: true,
-                  message: 'Please enter the bookmark name',
-                },
-                minLength: {
-                  value: 1,
-                  message: 'Bookmark must be at least 1 characters',
-                },
-                maxLength: {
-                  value: 24,
-                  message: 'Bookmark cannot exceed 24 characters',
+                  message: intl.formatMessage({
+                    id: ETranslations.global_name,
+                  }),
                 },
               }}
             >
@@ -84,13 +84,18 @@ function BookmarkListModal() {
           if (form?.name) {
             void modifyBrowserBookmark({ ...item, title: form.name });
           }
+          Toast.success({
+            title: intl.formatMessage({
+              id: ETranslations.explore_bookmark_renamed,
+            }),
+          });
           setTimeout(() => {
             void run();
           }, 200);
         },
       });
     },
-    [modifyBrowserBookmark, run],
+    [modifyBrowserBookmark, run, intl],
   );
 
   const removeBookmarkFlagRef = useRef(false);
@@ -119,7 +124,7 @@ function BookmarkListModal() {
 
   const onSortBookmarks = useCallback(
     (data: IBrowserBookmark[]) => {
-      buildBookmarkData(data);
+      buildBookmarkData({ data });
       setDataSource(data);
     },
     [buildBookmarkData],
@@ -135,15 +140,26 @@ function BookmarkListModal() {
           setIsEditing((prev) => !prev);
         }}
       >
-        {isEditing ? 'Done' : 'Edit'}
+        {isEditing
+          ? intl.formatMessage({
+              id: ETranslations.global_done,
+            })
+          : intl.formatMessage({
+              id: ETranslations.global_edit,
+            })}
       </Button>
     ),
-    [isEditing],
+    [isEditing, intl],
   );
-
+  const { gtMd } = useMedia();
   return (
     <Page>
-      <Page.Header title="Bookmarks" headerRight={headerRight} />
+      <Page.Header
+        title={intl.formatMessage({
+          id: ETranslations.explore_bookmarks,
+        })}
+        headerRight={headerRight}
+      />
       <Page.Body>
         <SortableListView
           data={dataSource}
@@ -155,52 +171,51 @@ function BookmarkListModal() {
             index,
           })}
           onDragEnd={(ret) => onSortBookmarks(ret.data)}
-          renderItem={({ item, getIndex, drag }) => (
+          renderItem={({ item, getIndex, drag, dragProps }) => (
             <ListItem
               h={CELL_HEIGHT}
               testID={`search-modal-${item.url.toLowerCase()}`}
               {...(!isEditing && {
-                onPress: () =>
+                onPress: () => {
                   handleOpenWebSite({
                     navigation,
+                    switchToMultiTabBrowser: gtMd,
                     webSite: {
                       url: item.url,
                       title: item.title,
                     },
-                  }),
+                  });
+                  defaultLogger.discovery.dapp.enterDapp({
+                    dappDomain: item.url,
+                    dappName: item.title,
+                    enterMethod: EEnterMethod.bookmark,
+                  });
+                },
               })}
             >
               {isEditing ? (
                 <ListItem.IconButton
-                  title="Remove"
+                  title={intl.formatMessage({
+                    id: ETranslations.global_remove,
+                  })}
                   key="remove"
-                  animation="quick"
-                  enterStyle={{
-                    opacity: 0,
-                    scale: 0,
-                  }}
                   icon="MinusCircleSolid"
                   iconProps={{
                     color: '$iconCritical',
                   }}
                   onPress={() => {
                     void deleteCell(getIndex);
-                    void removeBrowserBookmark(item.url);
                     Toast.success({
                       title: intl.formatMessage({
-                        id: 'msg__bookmark_removed',
+                        id: ETranslations.explore_removed_success,
                       }),
                     });
-                    void run();
                   }}
                   testID="action-list-item-rename"
                 />
               ) : null}
               <ListItem.Avatar
-                src={item.logo}
-                fallbackProps={{
-                  children: <Skeleton w="$10" h="$10" />,
-                }}
+                avatar={<DiscoveryIcon size="$10" uri={item.logo} />}
               />
               <ListItem.Text
                 primary={item.title}
@@ -214,29 +229,22 @@ function BookmarkListModal() {
                 flex={1}
               />
               {isEditing ? (
-                <XStack space="$6">
+                <XStack gap="$6">
                   <ListItem.IconButton
-                    title="Rename"
+                    title={intl.formatMessage({
+                      id: ETranslations.explore_rename,
+                    })}
                     key="rename"
-                    animation="quick"
-                    enterStyle={{
-                      opacity: 0,
-                      scale: 0,
-                    }}
                     icon="PencilOutline"
                     onPress={() => onRename(item)}
                     testID="action-list-item-rename"
                   />
                   <ListItem.IconButton
                     key="darg"
-                    animation="quick"
-                    enterStyle={{
-                      opacity: 0,
-                      scale: 0,
-                    }}
                     cursor="move"
                     icon="DragOutline"
                     onPressIn={drag}
+                    dataSet={dragProps}
                   />
                 </XStack>
               ) : null}

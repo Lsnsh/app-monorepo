@@ -1,7 +1,10 @@
 import { useState } from 'react';
 
+import { useIntl } from 'react-intl';
+
 import {
   Dialog,
+  ESwitchSize,
   SizableText,
   Spinner,
   Stack,
@@ -11,11 +14,13 @@ import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/background
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
 import { usePromiseResult } from '@onekeyhq/kit/src/hooks/usePromiseResult';
 import type { IDBWallet } from '@onekeyhq/kit-bg/src/dbs/local/types';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 
 import { WalletOptionItem } from './WalletOptionItem';
 
 type IDeviceAdvanceSettingsProps = {
   wallet?: IDBWallet;
+  onFail?: (error: Error) => void;
 };
 
 function EnterPinOnSoftwareSwitch(
@@ -28,7 +33,7 @@ function EnterPinOnSoftwareSwitch(
 
   return (
     <Switch
-      size="small"
+      size={ESwitchSize.small}
       value={enterPinOnSoftware}
       onChange={async (v) => {
         try {
@@ -56,18 +61,17 @@ function EnablePassphraseSwitch(
 
   return (
     <Switch
-      size="small"
+      size={ESwitchSize.small}
       value={enablePassphrase}
       onChange={async (v) => {
         try {
-          setEnablePassphrase(v);
           await backgroundApiProxy.serviceHardware.setPassphraseEnabled({
             walletId: props?.wallet?.id || '',
             passphraseEnabled: v,
           });
+          setEnablePassphrase(v);
         } catch (error) {
           console.error(error);
-          setEnablePassphrase(!v);
         }
       }}
     />
@@ -75,13 +79,19 @@ function EnablePassphraseSwitch(
 }
 
 function AdvanceDialogContent(props: IDeviceAdvanceSettingsProps) {
-  const { result } = usePromiseResult(
-    () =>
-      backgroundApiProxy.serviceHardware.getDeviceAdvanceSettings({
+  const intl = useIntl();
+  const { onFail } = props;
+  const { result } = usePromiseResult(async () => {
+    try {
+      return await backgroundApiProxy.serviceHardware.getDeviceAdvanceSettings({
         walletId: props?.wallet?.id || '',
-      }),
-    [props?.wallet?.id],
-  );
+      });
+    } catch (error) {
+      onFail?.(error as Error);
+      throw error;
+    }
+  }, [onFail, props?.wallet?.id]);
+
   if (!result) {
     return (
       <Stack borderRadius="$3" p="$5" bg="$bgSubdued" borderCurve="continuous">
@@ -92,39 +102,53 @@ function AdvanceDialogContent(props: IDeviceAdvanceSettingsProps) {
 
   return (
     <Stack mx="$-5">
-      <ListItem title="Enter Pin on App" pt="$0">
-        <EnterPinOnSoftwareSwitch
-          {...props}
-          defaultValue={result.inputPinOnSoftware}
-        />
-      </ListItem>
-      <ListItem title="Passphrase">
+      {result.inputPinOnSoftwareSupport ? (
+        <ListItem
+          title={intl.formatMessage({ id: ETranslations.enter_pin_on_app })}
+          pt="$0"
+        >
+          <EnterPinOnSoftwareSwitch
+            {...props}
+            defaultValue={result.inputPinOnSoftware}
+          />
+        </ListItem>
+      ) : null}
+      <ListItem
+        title={intl.formatMessage({ id: ETranslations.global_passphrase })}
+      >
         <EnablePassphraseSwitch
           {...props}
           defaultValue={result.passphraseEnabled}
         />
       </ListItem>
       <SizableText px="$5" size="$bodyMd">
-        Passphrase adds a custom phrase to your recovery phrase to create a
-        hidden wallet. Each hidden wallet has its passphrase. Do not forget it,
-        as it can't be retrieved & funds will be lost permanently.
+        {intl.formatMessage({ id: ETranslations.global_passphrase_desc })}
       </SizableText>
     </Stack>
   );
 }
 
 export function Advance(props: IDeviceAdvanceSettingsProps) {
+  const intl = useIntl();
+
   return (
     <WalletOptionItem
       icon="SwitchOutline"
-      label="Advance"
-      onPress={() =>
-        Dialog.show({
-          title: 'Advance',
-          renderContent: <AdvanceDialogContent {...props} />,
+      label={intl.formatMessage({ id: ETranslations.global_advance })}
+      onPress={() => {
+        const dialog = Dialog.show({
+          title: intl.formatMessage({ id: ETranslations.global_advance }),
+          renderContent: (
+            <AdvanceDialogContent
+              {...props}
+              onFail={() => {
+                void dialog.close();
+              }}
+            />
+          ),
           showFooter: false,
-        })
-      }
+        });
+      }}
     />
   );
 }

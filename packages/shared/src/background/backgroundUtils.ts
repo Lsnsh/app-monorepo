@@ -17,6 +17,7 @@ import {
 import {
   IMPL_ADA,
   IMPL_ALGO,
+  IMPL_ALPH,
   IMPL_APTOS,
   IMPL_BTC,
   IMPL_CFX,
@@ -26,16 +27,21 @@ import {
   IMPL_LIGHTNING,
   IMPL_LIGHTNING_TESTNET,
   IMPL_NEAR,
+  IMPL_NOSTR,
+  IMPL_SCDO,
   IMPL_SOL,
   IMPL_STC,
   IMPL_SUI,
   IMPL_TBTC,
+  IMPL_TON,
   IMPL_TRON,
 } from '../engine/engineConsts';
 import { NotAutoPrintError } from '../errors';
 // import debugLogger from '../logger/debugLogger';
+import errorUtils from '../errors/utils/errorUtils';
 import platformEnv from '../platformEnv';
 
+import type { OneKeyError } from '../errors';
 import type { IInjectedProviderNamesStrings } from '@onekeyfe/cross-inpage-provider-types';
 import type { Method } from 'axios';
 
@@ -101,11 +107,16 @@ export function warningIfNotRunInBackground({
       // web-embed error.stack data is not reliable, missing background keywords
       return;
     }
+    if (platformEnv.isWebMobileIOS || platformEnv.isWebSafari) {
+      // iOS safari get wrong error.stack
+      return;
+    }
     try {
       throw new NotAutoPrintError();
     } catch (error) {
       const err = error as Error;
-      err.$$autoPrintErrorIgnore = true;
+      errorUtils.autoPrintErrorIgnore(err);
+
       if (
         err.stack &&
         !err.stack.includes('backgroundApiInit') &&
@@ -169,37 +180,48 @@ export function waitAsync(timeout: number) {
   });
 }
 
-export function makeTimeoutPromise<T>({
+export function makeTimeoutPromise<T, TParams = undefined>({
   asyncFunc,
-  timeout,
-  timeoutResult,
+  timeout, // ms
+  timeoutRejectError,
 }: {
-  asyncFunc: () => Promise<T>;
+  asyncFunc: (params: TParams) => Promise<T>;
   timeout: number;
-  timeoutResult: T;
+  timeoutRejectError: OneKeyError | Error;
 }) {
-  return new Promise<T>((resolve) => {
-    let isResolved = false;
-    const timer = setTimeout(() => {
-      if (isResolved) {
-        return;
-      }
-      isResolved = true;
-      resolve(timeoutResult);
-      // console.log('makeTimeoutPromise timeout result >>>>> ', timeoutResult);
-    }, timeout);
+  return (params: TParams) =>
+    new Promise<T>((resolve, reject) => {
+      let isCompleted = false;
+      const timer = setTimeout(() => {
+        if (isCompleted) {
+          return;
+        }
+        isCompleted = true;
+        clearTimeout(timer);
+        reject(timeoutRejectError);
+        // console.log('makeTimeoutPromise timeout result >>>>> ', timeoutResult);
+      }, timeout);
 
-    const p = asyncFunc();
-    void p.then((result) => {
-      if (isResolved) {
-        return;
-      }
-      isResolved = true;
-      clearTimeout(timer);
-      resolve(result);
-      // console.log('makeTimeoutPromise correct result >>>>> ', result);
+      const p = asyncFunc(params);
+      void p
+        .then((result) => {
+          if (isCompleted) {
+            return;
+          }
+          resolve(result);
+          // console.log('makeTimeoutPromise correct result >>>>> ', result);
+        })
+        .catch((error) => {
+          if (isCompleted) {
+            return;
+          }
+          reject(error);
+        })
+        .finally(() => {
+          isCompleted = true;
+          clearTimeout(timer);
+        });
     });
-  });
 }
 
 export async function waitForDataLoaded({
@@ -272,34 +294,38 @@ export const scopeNetworks: Record<
   'conflux': [IMPL_CFX],
   'solana': [IMPL_SOL],
   'sollet': [IMPL_SOL],
-  'starcoin': [IMPL_STC],
   'aptos': [IMPL_APTOS],
   'martian': [IMPL_APTOS],
   'tron': [IMPL_TRON],
   'algo': [IMPL_ALGO],
+  'alephium': [IMPL_ALPH],
   'sui': [IMPL_SUI],
+  'ton': [IMPL_TON],
+  'scdo': [IMPL_SCDO],
   'cardano': [IMPL_ADA],
   'cosmos': [IMPL_COSMOS],
   'polkadot': [IMPL_DOT],
   'webln': [IMPL_LIGHTNING, IMPL_LIGHTNING_TESTNET],
-  // TODO: add nostr
-  'nostr': undefined,
+  'nostr': [IMPL_NOSTR],
   '$hardware_sdk': undefined,
   '$private': undefined,
+  '$privateExternalAccount': [IMPL_BTC, IMPL_TBTC],
   '$walletConnect': undefined,
 };
 
 export const ENABLED_DAPP_SCOPE: IInjectedProviderNamesStrings[] = [
   IInjectedProviderNames.btc,
   IInjectedProviderNames.ethereum,
-  IInjectedProviderNames.starcoin,
   IInjectedProviderNames.near,
   IInjectedProviderNames.solana,
   IInjectedProviderNames.aptos,
   IInjectedProviderNames.conflux,
   IInjectedProviderNames.tron,
   IInjectedProviderNames.algo,
+  IInjectedProviderNames.alephium,
   IInjectedProviderNames.sui,
+  IInjectedProviderNames.ton,
+  IInjectedProviderNames.scdo,
   IInjectedProviderNames.cardano,
   IInjectedProviderNames.cosmos,
   IInjectedProviderNames.polkadot,

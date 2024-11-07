@@ -8,7 +8,7 @@ import type {
   IConnectionStorageType,
 } from '@onekeyhq/shared/types/dappConnection';
 
-import { SimpleDbEntityBase } from './SimpleDbEntityBase';
+import { SimpleDbEntityBase } from '../base/SimpleDbEntityBase';
 
 export interface IDappConnectionData {
   data: {
@@ -108,6 +108,7 @@ export class SimpleDbEntityDappConnection extends SimpleDbEntityBase<IDappConnec
           networkImplMap: {},
           addressMap: {},
           walletConnectTopic,
+          updatedAt: Date.now(),
         };
       } else {
         // If one already exists, create a new copy to maintain immutability.
@@ -119,6 +120,7 @@ export class SimpleDbEntityDappConnection extends SimpleDbEntityBase<IDappConnec
           addressMap: { ...connectionItem.addressMap },
           walletConnectTopic:
             walletConnectTopic || connectionItem.walletConnectTopic,
+          updatedAt: Date.now(),
         };
       }
 
@@ -221,6 +223,7 @@ export class SimpleDbEntityDappConnection extends SimpleDbEntityBase<IDappConnec
         connectionMap: updatedConnectionMap,
         networkImplMap,
         addressMap,
+        updatedAt: Date.now(),
       };
 
       const updatedStorage = {
@@ -247,7 +250,7 @@ export class SimpleDbEntityDappConnection extends SimpleDbEntityBase<IDappConnec
   @backgroundMethod()
   async getAccountSelectorNum(
     origin: string,
-    networkImpl: string,
+    networkImpls: string[],
     storageType: IConnectionStorageType,
   ): Promise<number> {
     const rawData = await this.getRawData();
@@ -265,9 +268,11 @@ export class SimpleDbEntityDappConnection extends SimpleDbEntityBase<IDappConnec
       return 0;
     }
 
-    const accountNumbers = connectionItem.networkImplMap[networkImpl];
-    if (accountNumbers && accountNumbers.length > 0) {
-      return Math.max(...accountNumbers);
+    for (const networkImpl of networkImpls) {
+      const accountNumbers = connectionItem.networkImplMap[networkImpl];
+      if (accountNumbers && accountNumbers.length > 0) {
+        return Math.max(...accountNumbers);
+      }
     }
     return generateAccountSelectorNumber(
       connectionItem.connectionMap,
@@ -358,7 +363,7 @@ export class SimpleDbEntityDappConnection extends SimpleDbEntityBase<IDappConnec
       connectionItem.networkImplMap[networkImpl] || [];
 
     const accountsInfo = accountSelectorNumbers
-      .map((num) => connectionItem.connectionMap[num])
+      .map((num) => ({ ...connectionItem.connectionMap[num], num }))
       .filter(Boolean);
     return accountsInfo;
   }
@@ -411,6 +416,7 @@ export class SimpleDbEntityDappConnection extends SimpleDbEntityBase<IDappConnec
       const updatedConnectionItem = {
         ...connectionItem,
         connectionMap: updatedConnectionMap,
+        updatedAt: Date.now(),
       };
 
       // Return the updated rawData with the updated connection item
@@ -424,6 +430,142 @@ export class SimpleDbEntityDappConnection extends SimpleDbEntityBase<IDappConnec
           },
         },
       };
+    });
+  }
+
+  removeFromNetworkImplMap(
+    connectionItem: IConnectionItem,
+    networkImpl: string,
+    index: number,
+  ) {
+    const indices = connectionItem.networkImplMap[networkImpl] || [];
+    const newIndices = indices.filter((idx) => idx !== index);
+    if (newIndices.length === 0) {
+      delete connectionItem.networkImplMap[networkImpl];
+    } else {
+      connectionItem.networkImplMap[networkImpl] = newIndices;
+    }
+  }
+
+  removeFromAddressMap(
+    connectionItem: IConnectionItem,
+    address: string,
+    index: number,
+  ) {
+    const indices = connectionItem.addressMap[address] || [];
+    const newIndices = indices.filter((idx) => idx !== index);
+    if (newIndices.length === 0) {
+      delete connectionItem.addressMap[address];
+    } else {
+      connectionItem.addressMap[address] = newIndices;
+    }
+  }
+
+  removeEntries({
+    connectionData,
+    providerType,
+    origin,
+    connectionItem,
+    key,
+    value,
+  }: {
+    connectionData: IDappConnectionData['data'];
+    providerType: keyof IDappConnectionData['data'];
+    origin: string;
+    connectionItem: IConnectionItem;
+    key: keyof IConnectionAccountInfo; // 'walletId'
+    value: string; // hd--0
+  }) {
+    Object.keys(connectionItem.connectionMap).forEach((i) => {
+      const index = parseInt(i, 10);
+      const item = connectionItem.connectionMap[index];
+      if (item[key] === value) {
+        this.removeFromNetworkImplMap(connectionItem, item.networkImpl, index);
+        this.removeFromAddressMap(connectionItem, item.address, index);
+        delete connectionItem.connectionMap[index];
+      }
+    });
+
+    if (Object.keys(connectionItem.connectionMap).length === 0) {
+      // If empty, delete the entire connectionItem from the parent provider
+      delete connectionData[providerType][origin];
+    }
+  }
+
+  @backgroundMethod()
+  async removeWallet({ walletId }: { walletId: string }) {
+    await this.setRawData(({ rawData }) => {
+      if (!rawData || typeof rawData !== 'object' || !rawData.data) {
+        return rawData as IDappConnectionData;
+      }
+
+      Object.keys(rawData.data).forEach((type) => {
+        const providerType = type as keyof IDappConnectionData['data'];
+        const providers = rawData.data[providerType];
+        Object.entries(providers).forEach(([origin, connectionItem]) => {
+          this.removeEntries({
+            connectionData: rawData.data,
+            providerType,
+            origin,
+            connectionItem,
+            key: 'walletId',
+            value: walletId,
+          });
+        });
+      });
+
+      return rawData;
+    });
+  }
+
+  @backgroundMethod()
+  async removeAccount({
+    accountId,
+    indexedAccountId,
+  }: {
+    accountId?: string;
+    indexedAccountId?: string;
+  }) {
+    await this.setRawData(({ rawData }) => {
+      if (!rawData || typeof rawData !== 'object' || !rawData.data) {
+        return rawData as IDappConnectionData;
+      }
+
+      let key: keyof IConnectionAccountInfo | null = null;
+      let value: string | null = null;
+
+      if (accountId) {
+        key = 'accountId';
+        value = accountId;
+      }
+
+      if (indexedAccountId) {
+        key = 'indexedAccountId';
+        value = indexedAccountId;
+      }
+
+      if (!key || !value) {
+        return rawData;
+      }
+
+      Object.keys(rawData.data).forEach((type) => {
+        const providerType = type as keyof IDappConnectionData['data'];
+        const providers = rawData.data[providerType];
+        Object.entries(providers).forEach(([origin, connectionItem]) => {
+          if (origin && connectionItem && key && value) {
+            this.removeEntries({
+              connectionData: rawData.data,
+              providerType,
+              origin,
+              connectionItem,
+              key,
+              value,
+            });
+          }
+        });
+      });
+
+      return rawData;
     });
   }
 }

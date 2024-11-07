@@ -17,8 +17,10 @@ import offscreenApiProxy from '@onekeyhq/kit-bg/src/offscreens/instance/offscree
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import { getExtensionIndexHtml } from '@onekeyhq/shared/src/utils/extUtils';
 
+import { setupExtUIEvent } from '../background/extUI';
 import { setupKeepAlive } from '../background/keepAlive';
 import serviceWorker from '../background/serviceWorker';
+import { setupSidePanelPortInBg } from '../background/sidePanel';
 
 function initBackground() {
   // TODO use backgroundApiInit
@@ -41,6 +43,8 @@ function initBackground() {
 if (platformEnv.isExtensionBackgroundServiceWorker) {
   // axios.defaults.adapter = axiosAdapter;
   setupKeepAlive();
+  setupSidePanelPortInBg();
+  setupExtUIEvent();
   serviceWorker.disableCacheInBackground();
 }
 console.log(
@@ -100,10 +104,8 @@ if (!platformEnv.isManifestV3) {
   );
 }
 
+globalThis.$offscreenApiProxy = offscreenApiProxy;
 if (process.env.NODE_ENV !== 'production') {
-  // @ts-ignore
-  global.$$offscreenApiProxy = offscreenApiProxy;
-  void offscreenApiProxy.adaSdk.sayHello().then(console.log);
-  void offscreenApiProxy.xmrSdk.showMe().then(console.log);
+  void globalThis.$offscreenApiProxy.adaSdk.sayHello().then(console.log);
 }
 export {};

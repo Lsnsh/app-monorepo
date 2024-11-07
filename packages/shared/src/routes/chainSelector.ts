@@ -5,20 +5,36 @@ import type {
 import type { IServerNetwork } from '@onekeyhq/shared/types';
 
 export enum EChainSelectorPages {
+  AccountChainSelector = 'AccountChainSelector',
   ChainSelector = 'ChainSelector',
-  ConfigurableChainSelector = 'ConfigurableChainSelector',
+  AddCustomNetwork = 'AddCustomNetwork',
 }
-export type IChainSelectorRouteParams = IAccountSelectorRouteParams &
-  IAccountSelectorAvailableNetworks;
+export type IAccountChainSelectorRouteParams = IAccountSelectorRouteParams &
+  IAccountSelectorAvailableNetworks & {
+    editable?: boolean;
+  };
 
-export type IConfigurableChainSelectorParams = {
+export type IChainSelectorParams = {
   defaultNetworkId?: string;
   networkIds?: string[];
   title?: string;
   onSelect?: (network: IServerNetwork) => void;
+  disableNetworkIds?: string[];
+  grouped?: boolean;
 };
 
 export type IChainSelectorParamList = {
-  [EChainSelectorPages.ChainSelector]: IChainSelectorRouteParams;
-  [EChainSelectorPages.ConfigurableChainSelector]?: IConfigurableChainSelectorParams;
+  [EChainSelectorPages.AccountChainSelector]: IAccountChainSelectorRouteParams;
+  [EChainSelectorPages.ChainSelector]?: IChainSelectorParams;
+  [EChainSelectorPages.AddCustomNetwork]: {
+    state: 'add' | 'edit';
+    networkId?: string;
+    networkName?: string;
+    rpcUrl?: string;
+    chainId?: number;
+    symbol?: string;
+    blockExplorerUrl?: string;
+    onSuccess?: (network: IServerNetwork) => void;
+    onDeleteSuccess?: () => void;
+  };
 };

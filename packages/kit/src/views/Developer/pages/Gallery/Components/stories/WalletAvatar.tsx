@@ -12,9 +12,12 @@ const wallet: IDBWallet = {
   'avatar': img,
   'type': 'hd',
   'backuped': false,
-  'nextAccountIds': {},
+  'nextIds': {
+    hiddenWalletNum: 1,
+    accountGlobalNum: 1,
+    accountHdIndex: 0,
+  },
   'accounts': [],
-  'nextIndex': 54,
   'walletNo': 0,
   'avatarInfo': {
     'img': 'pig',
@@ -30,7 +33,7 @@ const ToastGallery = () => (
       {
         title: 'Default',
         element: (
-          <YStack space="$2">
+          <YStack gap="$2">
             <WalletAvatar size="$20" wallet={wallet} />
             <WalletAvatar img="panda" wallet={undefined} />
             <WalletAvatar img="panda" wallet={undefined} />

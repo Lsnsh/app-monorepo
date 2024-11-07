@@ -31,14 +31,12 @@ const createOffscreenApiModule = memoizee(
             };
             // chrome.runtime.sendMessage(message);
             // TODO backgroundApiProxyInOffscreen
-            void window.extJsBridgeOffscreenToBg.request({ data: message });
+            void globalThis.extJsBridgeOffscreenToBg.request({ data: message });
           });
         }
         return HardwareLowLevelSDK;
       case 'adaSdk':
         return new (await import('../OffscreenApiAdaSdk')).default();
-      case 'xmrSdk':
-        return new (await import('../OffscreenApiXmrSdk')).default();
       default:
         throw new Error(`Unknown offscreen API module: ${name as string}`);
     }
@@ -51,6 +49,7 @@ const createOffscreenApiModule = memoizee(
 const callOffscreenApiMethod =
   buildCallRemoteApiMethod<IOffscreenApiMessagePayload>(
     createOffscreenApiModule,
+    'offscreenApi',
   );
 
 export default {

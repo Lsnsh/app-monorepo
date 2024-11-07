@@ -1,8 +1,10 @@
 import { web3Errors } from '@onekeyfe/cross-inpage-provider-errors';
 import { IInjectedProviderNames } from '@onekeyfe/cross-inpage-provider-types';
+import { Semaphore } from 'async-mutex';
 import BigNumber from 'bignumber.js';
 import * as ethUtils from 'ethereumjs-util';
-import { isNil } from 'lodash';
+import stringify from 'fast-json-stable-stringify';
+import { get, isNil } from 'lodash';
 
 import { hashMessage } from '@onekeyhq/core/src/chains/evm/message';
 import type { IEncodedTxEvm } from '@onekeyhq/core/src/chains/evm/types';
@@ -12,11 +14,23 @@ import {
   providerApiMethod,
 } from '@onekeyhq/shared/src/background/backgroundDecorators';
 import { IMPL_EVM } from '@onekeyhq/shared/src/engine/engineConsts';
+import {
+  EAppEventBusNames,
+  appEventBus,
+} from '@onekeyhq/shared/src/eventBus/appEventBus';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
+import accountUtils from '@onekeyhq/shared/src/utils/accountUtils';
 import { check } from '@onekeyhq/shared/src/utils/assertUtils';
+import { memoizee } from '@onekeyhq/shared/src/utils/cacheUtils';
 import hexUtils from '@onekeyhq/shared/src/utils/hexUtils';
 import { generateUUID } from '@onekeyhq/shared/src/utils/miscUtils';
-import type { IConnectionAccountInfo } from '@onekeyhq/shared/types/dappConnection';
+import timerUtils from '@onekeyhq/shared/src/utils/timerUtils';
+import type { IServerNetwork } from '@onekeyhq/shared/types';
 import { EMessageTypesEth } from '@onekeyhq/shared/types/message';
+import type {
+  IAccountToken,
+  IEthWatchAssetParameter,
+} from '@onekeyhq/shared/types/token';
 
 import ProviderApiBase from './ProviderApiBase';
 
@@ -28,8 +42,37 @@ import type {
 
 export type ISwitchEthereumChainParameter = {
   chainId: string;
-  networkId?: string;
+  // networkId?: string; // not use?
 };
+
+export type IAddEthereumChainParameter = {
+  chainId: string;
+  blockExplorerUrls?: string[];
+  chainName?: string;
+  iconUrls?: string[];
+  nativeCurrency?: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+  rpcUrls?: string[];
+};
+
+function convertToEthereumChainResult(
+  result: IServerNetwork | undefined | null,
+) {
+  return {
+    id: result?.id,
+    impl: result?.impl,
+    symbol: result?.symbol,
+    decimals: result?.decimals,
+    logoURI: result?.logoURI,
+    shortName: result?.shortname,
+    shortCode: result?.shortcode,
+    chainId: result?.chainId,
+    networkVersion: undefined,
+  };
+}
 
 function prefixTxValueToHex(value: string) {
   if (value?.startsWith?.('0X') && value?.slice) {
@@ -50,6 +93,16 @@ function prefixTxValueToHex(value: string) {
 @backgroundClass()
 class ProviderApiEthereum extends ProviderApiBase {
   public providerName = IInjectedProviderNames.ethereum;
+
+  private semaphore = new Semaphore(1);
+
+  // return a mocked chainId in non-evm, as empty string may cause dapp error
+  private _getNetworkMockInfo() {
+    return {
+      chainId: '0x736d17dc',
+      networkVersion: '1936529372',
+    };
+  }
 
   public override notifyDappAccountsChanged(
     info: IProviderBaseBackgroundNotifyInfo,
@@ -83,21 +136,21 @@ class ProviderApiEthereum extends ProviderApiBase {
     };
 
     info.send(data, info.targetOrigin);
+    this.notifyNetworkChangedToDappSite(info.targetOrigin);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public async rpcCall(request: IJsBridgeMessagePayload): Promise<any> {
     const { data } = request;
     const { accountInfo: { networkId } = {} } = (
-      await this._getAccountsInfo(request)
+      await this.getAccountsInfo(request)
     )[0];
     const rpcRequest = data as IJsonRpcRequest;
 
-    console.log(`${this.providerName} RpcCall=====>>>> : BgApi:`, request);
-
-    const result = await this.backgroundApi.serviceDApp.proxyRPCCall({
+    const [result] = await this.backgroundApi.serviceDApp.proxyRPCCall({
       networkId: networkId ?? '',
       request: rpcRequest,
+      origin: request.origin ?? '',
     });
 
     return result;
@@ -105,12 +158,15 @@ class ProviderApiEthereum extends ProviderApiBase {
 
   @providerApiMethod()
   async eth_requestAccounts(request: IJsBridgeMessagePayload) {
-    const accounts = await this.eth_accounts(request);
-    if (accounts && accounts.length) {
-      return accounts;
-    }
-    await this.backgroundApi.serviceDApp.openConnectionModal(request);
-    return this.eth_accounts(request);
+    return this.semaphore.runExclusive(async () => {
+      const accounts = await this.eth_accounts(request);
+      if (accounts && accounts.length) {
+        return accounts;
+      }
+      await this.backgroundApi.serviceDApp.openConnectionModal(request);
+      void this._getConnectedNetworkName(request);
+      return this.eth_accounts(request);
+    });
   }
 
   @providerApiMethod()
@@ -128,7 +184,9 @@ class ProviderApiEthereum extends ProviderApiBase {
     if (!accountsInfo) {
       return Promise.resolve([]);
     }
-    return Promise.resolve(accountsInfo.map((i) => i.account?.address));
+    return Promise.resolve(
+      accountsInfo.map((i) => i.account?.addressDetail.normalizedAddress),
+    );
   }
 
   @providerApiMethod()
@@ -136,18 +194,16 @@ class ProviderApiEthereum extends ProviderApiBase {
     request: IJsBridgeMessagePayload,
     permissions: Record<string, unknown>,
   ) {
-    const permissionRes =
-      (await this.backgroundApi.serviceDApp.openConnectionModal(
-        request,
-      )) as IConnectionAccountInfo;
-
+    defaultLogger.discovery.dapp.dappRequest({ request });
+    await this.backgroundApi.serviceDApp.openConnectionModal(request);
+    const accounts = await this.eth_accounts(request);
     const result = Object.keys(permissions).map((permissionName) => {
       if (permissionName === 'eth_accounts') {
         return {
           caveats: [
             {
               type: 'restrictReturnedAccounts',
-              value: [permissionRes.address],
+              value: [accounts[0]],
             },
           ],
           date: Date.now(),
@@ -166,6 +222,7 @@ class ProviderApiEthereum extends ProviderApiBase {
       };
     });
 
+    void this._getConnectedNetworkName(request);
     return result;
   }
 
@@ -189,8 +246,12 @@ class ProviderApiEthereum extends ProviderApiBase {
       request,
     );
     if (!isNil(networks?.[0]?.chainId)) {
-      return hexUtils.hexlify(Number(networks?.[0]?.chainId));
+      return hexUtils.hexlify(Number(networks?.[0]?.chainId), {
+        removeZeros: true,
+      });
     }
+
+    return this._getNetworkMockInfo().chainId;
   }
 
   @providerApiMethod()
@@ -201,6 +262,7 @@ class ProviderApiEthereum extends ProviderApiBase {
     if (!isNil(networks?.[0]?.chainId)) {
       return networks?.[0]?.chainId;
     }
+    return this._getNetworkMockInfo().networkVersion;
   }
 
   @providerApiMethod()
@@ -230,8 +292,9 @@ class ProviderApiEthereum extends ProviderApiBase {
     request: IJsBridgeMessagePayload,
     transaction: IEncodedTxEvm,
   ) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
     const { accountInfo: { accountId, networkId } = {} } = (
-      await this._getAccountsInfo(request)
+      await this.getAccountsInfo(request)
     )[0];
 
     if (!isNil(transaction.value)) {
@@ -239,11 +302,16 @@ class ProviderApiEthereum extends ProviderApiBase {
     }
 
     const nonceBN = new BigNumber(transaction.nonce ?? 0);
+    const gasPriceBN = new BigNumber(transaction.gasPrice ?? 0);
 
     // https://app.chainspot.io/
     // some dapp may send tx with incorrect nonce 0
     if (nonceBN.isNaN() || nonceBN.isLessThanOrEqualTo(0)) {
       delete transaction.nonce;
+    }
+
+    if (gasPriceBN.isNaN() || gasPriceBN.isLessThanOrEqualTo(0)) {
+      delete transaction.gasPrice;
     }
 
     const result =
@@ -256,7 +324,7 @@ class ProviderApiEthereum extends ProviderApiBase {
 
     console.log('eth_sendTransaction DONE', result, request, transaction);
 
-    return result;
+    return result.txid;
   }
 
   @providerApiMethod()
@@ -270,14 +338,50 @@ class ProviderApiEthereum extends ProviderApiBase {
   }
 
   @providerApiMethod()
-  async wallet_watchAsset() {
-    throw web3Errors.rpc.methodNotSupported();
+  async wallet_watchAsset(
+    request: IJsBridgeMessagePayload,
+    params: IEthWatchAssetParameter,
+  ) {
+    const {
+      accountInfo: {
+        walletId,
+        accountId,
+        networkId,
+        indexedAccountId,
+        deriveType,
+      } = {},
+    } = (await this.getAccountsInfo(request))[0];
+    const contractAddress = params.options.address;
+    if (!contractAddress) {
+      throw web3Errors.rpc.invalidParams('contractAddress is required');
+    }
+
+    try {
+      await this.backgroundApi.serviceDApp.openAddCustomTokenModal({
+        request,
+        token: {
+          address: contractAddress,
+        } as IAccountToken,
+        walletId: walletId ?? '',
+        isOthersWallet: accountUtils.isOthersWallet({
+          walletId: walletId ?? '',
+        }),
+        indexedAccountId,
+        accountId: accountId ?? '',
+        networkId: networkId ?? '',
+        deriveType: deriveType ?? 'default',
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   @providerApiMethod()
   async eth_sign(request: IJsBridgeMessagePayload, ...messages: any[]) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
     const { accountInfo: { accountId, networkId } = {} } = (
-      await this._getAccountsInfo(request)
+      await this.getAccountsInfo(request)
     )[0];
     return this.backgroundApi.serviceDApp.openSignMessageModal({
       request,
@@ -294,9 +398,10 @@ class ProviderApiEthereum extends ProviderApiBase {
   // Provider API
   @providerApiMethod()
   async personal_sign(request: IJsBridgeMessagePayload, ...messages: any[]) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
     const {
       accountInfo: { accountId, networkId, address: accountAddress } = {},
-    } = (await this._getAccountsInfo(request))[0];
+    } = (await this.getAccountsInfo(request))[0];
 
     let message = messages[0] as string;
     let address = messages[1] as string;
@@ -324,6 +429,7 @@ class ProviderApiEthereum extends ProviderApiBase {
     request: IJsBridgeMessagePayload,
     ...messages: string[]
   ) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
     const [message, signature] = messages;
     if (
       typeof message === 'string' &&
@@ -340,6 +446,46 @@ class ProviderApiEthereum extends ProviderApiBase {
     throw web3Errors.rpc.invalidParams(
       'personal_ecRecover requires a message and a 65 bytes signature.',
     );
+  }
+
+  @providerApiMethod()
+  async metamask_logWeb3ShimUsage() {
+    throw web3Errors.rpc.methodNotSupported();
+  }
+
+  @providerApiMethod()
+  async wallet_registerOnboarding() {
+    throw web3Errors.rpc.methodNotSupported();
+  }
+
+  @providerApiMethod()
+  async wallet_scanQRCode() {
+    throw web3Errors.rpc.methodNotSupported();
+  }
+
+  @providerApiMethod()
+  async wallet_getCapabilities() {
+    throw web3Errors.rpc.methodNotSupported();
+  }
+
+  @providerApiMethod()
+  async wallet_sendCalls() {
+    throw web3Errors.rpc.methodNotSupported();
+  }
+
+  @providerApiMethod()
+  async wallet_getCallsStatus() {
+    throw web3Errors.rpc.methodNotSupported();
+  }
+
+  @providerApiMethod()
+  async wallet_showCallsStatus() {
+    throw web3Errors.rpc.methodNotSupported();
+  }
+
+  @providerApiMethod()
+  async wallet_getSnaps() {
+    throw web3Errors.rpc.methodNotSupported();
   }
 
   autoFixPersonalSignMessage({ message }: { message: string }) {
@@ -363,14 +509,20 @@ class ProviderApiEthereum extends ProviderApiBase {
     request: IJsBridgeMessagePayload,
     ...messages: any[]
   ) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
     const { accountInfo: { accountId, networkId } = {} } = (
-      await this._getAccountsInfo(request)
+      await this.getAccountsInfo(request)
     )[0];
 
     let message;
     if (messages.length && messages[0]) {
       message = messages[0] ?? null;
-      if (await this._isValidAddress(messages[0] ?? null)) {
+      if (
+        await this._isValidAddress({
+          networkId: networkId ?? '',
+          address: message,
+        })
+      ) {
         message = messages[1] ?? null;
       }
     }
@@ -410,6 +562,7 @@ class ProviderApiEthereum extends ProviderApiBase {
     request: IJsBridgeMessagePayload,
     ...messages: any[]
   ) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
     console.log('eth_signTypedData_v1', messages, request);
     return this.eth_signTypedData(request, ...messages);
   }
@@ -419,8 +572,9 @@ class ProviderApiEthereum extends ProviderApiBase {
     request: IJsBridgeMessagePayload,
     ...messages: any[]
   ) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
     const { accountInfo: { accountId, networkId } = {} } = (
-      await this._getAccountsInfo(request)
+      await this.getAccountsInfo(request)
     )[0];
     console.log('eth_signTypedData_v3', messages, request);
     return this.backgroundApi.serviceDApp.openSignMessageModal({
@@ -440,8 +594,9 @@ class ProviderApiEthereum extends ProviderApiBase {
     request: IJsBridgeMessagePayload,
     ...messages: any[]
   ) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
     const { accountInfo: { accountId, networkId } = {} } = (
-      await this._getAccountsInfo(request)
+      await this.getAccountsInfo(request)
     )[0];
     console.log('eth_signTypedData_v4', messages, request);
     return this.backgroundApi.serviceDApp.openSignMessageModal({
@@ -457,37 +612,180 @@ class ProviderApiEthereum extends ProviderApiBase {
   }
 
   @providerApiMethod()
+  async wallet_addEthereumChain(
+    request: IJsBridgeMessagePayload,
+    params: IAddEthereumChainParameter,
+    address?: string,
+    ...others: any[]
+  ) {
+    // some dapp will call methods many times, like https://beta.layer3.xyz/bounties/dca-into-mean
+
+    // @ts-ignore
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    if (this._addEthereumChainMemo._has(request, params, address, ...others)) {
+      /*
+       code:-32002
+       message:"Request of type 'wallet_addEthereumChain' already pending for origin https://beta.layer3.xyz. Please wait."
+      */
+      throw web3Errors.rpc.resourceUnavailable({
+        message: `Request of type 'wallet_addEthereumChain' already pending for origin ${
+          request?.origin || ''
+        }. Please wait.`,
+      });
+    }
+
+    // **** should await return
+    await this._addEthereumChainMemo(request, params, address, ...others);
+
+    // Metamask return null
+    return null;
+  }
+
+  _addEthereumChainMemo = memoizee(
+    async (
+      request: IJsBridgeMessagePayload,
+      params: IAddEthereumChainParameter,
+      address?: string,
+      ...others: any[]
+    ) => {
+      const networkId = `evm--${new BigNumber(params.chainId).toString(10)}`;
+      const network = await this.backgroundApi.serviceNetwork.getNetworkSafe({
+        networkId,
+      });
+      if (network) {
+        const connectedAccount =
+          await this.backgroundApi.serviceDApp.dAppGetConnectedAccountsInfo(
+            request,
+          );
+        if (
+          connectedAccount?.every(
+            (account) => account.accountInfo?.networkId !== networkId,
+          )
+        ) {
+          await this._switchEthereumChainMemo(request, {
+            chainId: params.chainId,
+          });
+        }
+        return convertToEthereumChainResult(network);
+      }
+
+      const result =
+        await this.backgroundApi.serviceDApp.openAddCustomNetworkModal({
+          request,
+          params,
+        });
+      appEventBus.emit(EAppEventBusNames.OnSwitchDAppNetwork, {
+        state: 'switching',
+      });
+      await timerUtils.wait(500);
+      await this.wallet_switchEthereumChain(request, {
+        chainId: params.chainId,
+      });
+      appEventBus.emit(EAppEventBusNames.OnSwitchDAppNetwork, {
+        state: 'completed',
+      });
+      return convertToEthereumChainResult(result);
+    },
+    {
+      max: 1,
+      maxAge: 800,
+      normalizer([request, params]: [
+        IJsBridgeMessagePayload,
+        ISwitchEthereumChainParameter,
+      ]): string {
+        const p = request?.data ?? [params];
+        return stringify(p);
+      },
+    },
+  );
+
+  @providerApiMethod()
   async wallet_switchEthereumChain(
     request: IJsBridgeMessagePayload,
     params: ISwitchEthereumChainParameter,
   ) {
-    return this._switchEthereumChain(request, params);
-  }
-
-  _switchEthereumChain = async (
-    request: IJsBridgeMessagePayload,
-    params: ISwitchEthereumChainParameter,
-  ) => {
-    const newNetworkId = `evm--${new BigNumber(params.chainId).toString(10)}`;
-    const containsNetwork =
-      await this.backgroundApi.serviceNetwork.containsNetwork({
-        impls: [IMPL_EVM],
-        networkId: newNetworkId,
-      });
-    if (!containsNetwork) {
-      // https://uniswap-v3.scroll.io/#/swap required Error response
-      throw web3Errors.provider.custom({
-        code: 4902, // error code should be 4902 here
-        message: `Unrecognized chain ID ${params.chainId}. Try adding the chain using wallet_addEthereumChain first.`,
+    defaultLogger.discovery.dapp.dappRequest({ request });
+    // @ts-ignore
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    if (this._switchEthereumChainMemo._has(request, params)) {
+      throw web3Errors.rpc.resourceUnavailable({
+        message: `Request of type 'wallet_addEthereumChain' already pending for origin ${
+          request?.origin || ''
+        }. Please wait.`,
       });
     }
-    await this.backgroundApi.serviceDApp.switchConnectedNetwork({
-      origin: request.origin ?? '',
-      scope: request.scope ?? this.providerName,
-      newNetworkId,
-    });
+
+    // some dapp will call methods many times, like https://beta.layer3.xyz/bounties/dca-into-mean
+    // some dapp should wait this method response, like https://app.uniswap.org/#/swap
+    // **** should await return
+    await this._switchEthereumChainMemo(request, params);
+
+    this.notifyNetworkChangedToDappSite(request.origin ?? '');
+    setTimeout(() => {
+      void this.backgroundApi.serviceDApp.notifyDAppChainChanged(
+        request.origin ?? '',
+      );
+    }, 500);
+    // Metamask return null
     return null;
-  };
+  }
+
+  /**
+   * https://github.com/MetaMask/metamask-improvement-proposals/blob/main/MIPs/mip-2.md
+   */
+  @providerApiMethod()
+  async wallet_revokePermissions(
+    request: IJsBridgeMessagePayload,
+    params: Record<string, unknown>,
+  ) {
+    defaultLogger.discovery.dapp.dappRequest({ request });
+    if (get(params, 'eth_accounts', null) && request.origin) {
+      await this.backgroundApi.serviceDApp.disconnectWebsite({
+        origin: request.origin,
+        storageType: 'injectedProvider',
+      });
+      return null;
+    }
+
+    throw web3Errors.rpc.invalidRequest('Unsupported permission type');
+  }
+
+  _switchEthereumChainMemo = memoizee(
+    async (
+      request: IJsBridgeMessagePayload,
+      params: ISwitchEthereumChainParameter,
+    ) => {
+      const newNetworkId = `evm--${new BigNumber(params.chainId).toString(10)}`;
+      const containsNetwork =
+        await this.backgroundApi.serviceNetwork.containsNetwork({
+          impls: [IMPL_EVM],
+          networkId: newNetworkId,
+        });
+      if (!containsNetwork) {
+        // https://uniswap-v3.scroll.io/#/swap required Error response
+        throw web3Errors.provider.custom({
+          code: 4902, // error code should be 4902 here
+          message: `Unrecognized chain ID ${params.chainId}. Try adding the chain using wallet_addEthereumChain first.`,
+        });
+      }
+      await this.backgroundApi.serviceDApp.switchConnectedNetwork({
+        origin: request.origin ?? '',
+        scope: request.scope ?? this.providerName,
+        newNetworkId,
+      });
+    },
+    {
+      max: 1,
+      maxAge: 800,
+      normalizer([request, params]: [
+        IJsBridgeMessagePayload,
+        ISwitchEthereumChainParameter,
+      ]): string {
+        const p = request?.data ?? [params];
+        return stringify(p);
+      },
+    },
+  );
 
   _isValidAddress = async ({
     networkId,
@@ -497,26 +795,14 @@ class ProviderApiEthereum extends ProviderApiBase {
     address: string;
   }) => {
     try {
-      const isValidAddress =
-        await this.backgroundApi.serviceAccountProfile.validateAddress({
-          networkId,
-          address,
-        });
-      return isValidAddress;
+      const status = await this.backgroundApi.serviceValidator.validateAddress({
+        networkId,
+        address,
+      });
+      return status === 'valid';
     } catch {
       return false;
     }
-  };
-
-  _getAccountsInfo = async (request: IJsBridgeMessagePayload) => {
-    const accountsInfo =
-      await this.backgroundApi.serviceDApp.dAppGetConnectedAccountsInfo(
-        request,
-      );
-    if (!accountsInfo) {
-      throw web3Errors.provider.unauthorized();
-    }
-    return accountsInfo;
   };
 
   _personalECRecover = async (

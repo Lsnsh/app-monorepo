@@ -1,3 +1,5 @@
+const DLLs = require('./electron-dll.config');
+
 /* eslint-disable no-template-curly-in-string */
 require('../../development/env');
 
@@ -55,11 +57,13 @@ module.exports = {
         'type': 'file',
       },
     ],
-    'background': 'build/static/images/icons/background.png',
+    'icon': 'build/static/images/icons/dmg.icns',
+    'background': 'build/static/images/icons/background.tiff',
   },
   'nsis': {
     'oneClick': false,
     'installerSidebar': 'build/static/images/icons/installerSidebar.bmp',
+    'deleteAppDataOnUninstall': true,
   },
   'mac': {
     'extraResources': [
@@ -90,13 +94,11 @@ module.exports = {
         'to': 'bin/bridge',
       },
     ],
+    'extraFiles': [...DLLs],
     'icon': 'build/static/images/icons/512x512.png',
     'artifactName': 'OneKey-Wallet-${version}-win-${arch}.${ext}',
     'verifyUpdateCodeSignature': false,
-    'target': ['nsis'],
-  },
-  'snap': {
-    'grade': 'stable',
+    'target': [{ target: 'nsis', arch: ['x64', 'arm64'] }],
   },
   'linux': {
     'extraResources': [
@@ -109,7 +111,7 @@ module.exports = {
     'artifactName': 'OneKey-Wallet-${version}-linux-${arch}.${ext}',
     'executableName': 'onekey-wallet',
     'category': 'Utility',
-    'target': ['AppImage', 'snap'],
+    'target': [{ target: 'AppImage', arch: ['x64', 'arm64'] }],
   },
   'afterSign': 'scripts/notarize.js',
 };

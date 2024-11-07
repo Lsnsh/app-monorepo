@@ -9,6 +9,7 @@ import type { EAddressEncodings } from './coreEnums';
 import type { ICurveName } from './coreTypesBase';
 import type { IUnsignedMessage } from './coreTypesMessage';
 import type { IUnsignedTxPro } from './coreTypesTx';
+import type { IBtcForkNetwork } from '../chains/btc/types';
 
 export * from './coreEnums';
 export * from './coreTypesBase';
@@ -37,6 +38,9 @@ export type ICoreApiGetAddressesQueryHdEvm = ICoreApiGetAddressesQueryHdBase;
 export type ICoreApiGetAddressesQueryHdBtc = ICoreApiGetAddressesQueryHdBase & {
   addressEncoding: EAddressEncodings;
 };
+export type ICoreApiGetAddressesQueryHdTon = ICoreApiGetAddressesQueryHdBase & {
+  addressEncoding: EAddressEncodings;
+};
 
 export type ICoreApiGetAddressesQueryHd =
   | ICoreApiGetAddressesQueryHdBase
@@ -49,6 +53,10 @@ export type ICoreApiGetAddressQueryImportedBase = {
   privateKeyInfo?: ISecretPrivateKeyInfo;
 };
 export type ICoreApiGetAddressQueryImportedBtc =
+  ICoreApiGetAddressQueryImportedBase & {
+    addressEncoding: EAddressEncodings | undefined;
+  };
+export type ICoreApiGetAddressQueryImportedTon =
   ICoreApiGetAddressQueryImportedBase & {
     addressEncoding: EAddressEncodings | undefined;
   };
@@ -75,7 +83,18 @@ export type ICoreApiGetAddressItem = {
 export type ICoreApiGetAddressesResult = {
   addresses: ICoreApiGetAddressItem[];
 };
-
+export enum ECoreApiExportedSecretKeyType {
+  publicKey = 'publicKey',
+  privateKey = 'privateKey',
+  xpub = 'xpub',
+  xprvt = 'xprvt',
+  mnemonic = 'mnemonic', // TON mnemonic
+}
+export type IExportKeyType = 'privateKey' | 'publicKey' | 'mnemonic';
+export type ICoreApiGetExportedSecretKey = ICoreApiSignBasePayload & {
+  keyType: ECoreApiExportedSecretKeyType;
+  addressEncoding?: EAddressEncodings;
+};
 // ----------------------------------------------
 export type ICoreApiPrivateKeysMap = {
   // path type
@@ -89,15 +108,27 @@ export type ICoreApiSignAccount = {
   path: string;
   pub?: string;
   pubKey?: string; // TODO rename to pub?
+  xpub?: string;
   template?: string;
-  relPaths?: string[]; // used for get privateKey of other utxo address
+};
+export type ICoreApiValidateXpubParams = {
+  xpub: string;
+  btcForkNetwork: IBtcForkNetwork;
+};
+export type ICoreApiValidateXprvtParams = {
+  xprvt: string;
+  btcForkNetwork: IBtcForkNetwork;
 };
 export type ICoreApiSignBasePayload = {
   networkInfo: ICoreApiNetworkInfo;
-  password: string;
-  account: ICoreApiSignAccount;
-  credentials: ICoreCredentialsInfo;
   btcExtraInfo?: ICoreApiSignBtcExtraInfo;
+
+  password: string;
+  credentials: ICoreCredentialsInfo;
+
+  account: ICoreApiSignAccount;
+  relPaths?: string[]; // used for get privateKey of other utxo address
+  signOnly?: boolean;
 };
 export type ICoreApiSignBtcExtraInfo = {
   inputAddressesEncodings?: Array<EAddressEncodings | undefined>;
@@ -108,6 +139,14 @@ export type ICoreApiSignBtcExtraInfo = {
     [fullPath: string]: {
       address: string;
       relPath: string;
+      fullPath: string;
+    };
+  };
+  addressToPath: {
+    [address: string]: {
+      address: string;
+      relPath: string;
+      fullPath: string;
     };
   };
 };
@@ -138,6 +177,10 @@ export type ICoreHdCredential = {
 };
 export type ICoreHdCredentialEncryptHex = string;
 
+export enum ECoreCredentialType {
+  hd = 'hd',
+  imported = 'imported',
+}
 export type ICoreCredentialsInfo = {
   hd?: ICoreHdCredentialEncryptHex;
   imported?: ICoreImportedCredentialEncryptHex;

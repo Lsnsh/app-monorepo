@@ -1,7 +1,6 @@
 import type { IAccountSelectorSelectedAccount } from '@onekeyhq/kit-bg/src/dbs/simple/entity/SimpleDbEntityAccountSelector';
 
 import { EAccountSelectorSceneName } from '../../types';
-import { NETWORK_ID_ETC } from '../config/networkIds';
 
 import accountUtils from './accountUtils';
 import networkUtils from './networkUtils';
@@ -95,7 +94,9 @@ function buildMergedSelectedAccount({
         networkId: mergedByData.networkId || '',
       })
     ) {
-      // TODO why should change networkId and driveType? check new network compatibility
+      // TODO why should change networkId and driveType? check new network compatibility?
+      // - swap from ETH token to BTC token, select EVM privateKey account, should not change home network and swapFrom network
+      // ----------------------------------------------
       // result.networkId = mergedByData.networkId;
       // result.deriveType = mergedByData.deriveType;
     }
@@ -108,9 +109,52 @@ function buildGlobalDeriveTypesMapKey({ networkId }: { networkId: string }) {
   const impl = networkUtils.getNetworkImpl({
     networkId,
   });
-  const useNetworkId = [NETWORK_ID_ETC].includes(networkId);
-  const key = useNetworkId ? networkId : impl;
-  return key;
+  return impl;
+  // const useNetworkId = [NETWORK_ID_ETC].includes(networkId);
+  // const key = useNetworkId ? networkId : impl;
+  // return key;
+}
+
+function isSceneCanPersist({
+  sceneName,
+}: {
+  sceneName: EAccountSelectorSceneName | undefined;
+}): boolean {
+  if (
+    sceneName &&
+    [
+      EAccountSelectorSceneName.discover,
+      EAccountSelectorSceneName.addressInput,
+    ].includes(sceneName)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isSceneCanAutoSelect({
+  sceneName,
+}: {
+  sceneName: EAccountSelectorSceneName | undefined;
+}): boolean {
+  if (
+    sceneName &&
+    [EAccountSelectorSceneName.addressInput].includes(sceneName)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isSceneUseGlobalDeriveType({
+  sceneName,
+}: {
+  sceneName: EAccountSelectorSceneName | undefined;
+}): boolean {
+  if (sceneName && [EAccountSelectorSceneName.discover].includes(sceneName)) {
+    return false;
+  }
+  return true;
 }
 
 export default {
@@ -119,4 +163,7 @@ export default {
   buildAccountSelectorSceneId,
   buildMergedSelectedAccount,
   buildGlobalDeriveTypesMapKey,
+  isSceneCanAutoSelect,
+  isSceneCanPersist,
+  isSceneUseGlobalDeriveType,
 };

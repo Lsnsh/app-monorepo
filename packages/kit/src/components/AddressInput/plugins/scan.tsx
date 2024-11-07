@@ -1,21 +1,34 @@
 import { type FC, useCallback } from 'react';
 
+import { useIntl } from 'react-intl';
+
 import { IconButton } from '@onekeyhq/components';
 import { AccountSelectorProviderMirror } from '@onekeyhq/kit/src/components/AccountSelector';
 import useScanQrCode from '@onekeyhq/kit/src/views/ScanQrCode/hooks/useScanQrCode';
-import { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import type { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
+import { EInputAddressChangeType } from '@onekeyhq/shared/types/address';
 
 import type { IAddressPluginProps } from '../types';
 
-const ScanPluginContent: FC<IAddressPluginProps> = ({ onChange, testID }) => {
+const ScanPluginContent: FC<IAddressPluginProps> = ({
+  onChange,
+  onInputTypeChange,
+  testID,
+}) => {
   const { start } = useScanQrCode();
+  const intl = useIntl();
   const onPress = useCallback(async () => {
-    const address = await start(false);
+    const address = await start({
+      handlers: [],
+      autoHandleResult: false,
+    });
     onChange?.(address?.raw);
-  }, [onChange, start]);
+    onInputTypeChange?.(EInputAddressChangeType.Scan);
+  }, [onChange, onInputTypeChange, start]);
   return (
     <IconButton
-      title="Scan"
+      title={intl.formatMessage({ id: ETranslations.send_to_scan_tooltip })}
       variant="tertiary"
       icon="ScanSolid"
       onPress={onPress}
@@ -24,10 +37,18 @@ const ScanPluginContent: FC<IAddressPluginProps> = ({ onChange, testID }) => {
   );
 };
 
-export const ScanPlugin: FC<IAddressPluginProps> = ({ onChange, testID }) => (
+type IScanPluginProps = IAddressPluginProps & {
+  sceneName: EAccountSelectorSceneName;
+};
+
+export const ScanPlugin: FC<IScanPluginProps> = ({
+  onChange,
+  testID,
+  sceneName,
+}) => (
   <AccountSelectorProviderMirror
     config={{
-      sceneName: EAccountSelectorSceneName.home,
+      sceneName,
     }}
     enabledNum={[0]}
   >

@@ -1,31 +1,21 @@
 import { useCallback, useContext, useEffect, useRef } from 'react';
 
 import { useNavigation } from '@react-navigation/core';
-import {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
-import { useKeyboardEvent, useSafeAreaInsets } from '../../hooks';
+import { EPageType, usePageType } from '../../hocs';
+import {
+  updateHeightWhenKeyboardHide,
+  updateHeightWhenKeyboardShown,
+  useKeyboardEvent,
+  useSafeAreaInsets,
+} from '../../hooks';
 
 import { PageContext } from './PageContext';
 
 import type { IPageLifeCycle } from './type';
-
-export const usePage = () => {
-  const { pageOffsetRef, pageRef } = useContext(PageContext);
-  const getContentOffset = useCallback(
-    () => pageOffsetRef?.current,
-    [pageOffsetRef],
-  );
-  return {
-    pageRef: pageRef?.current,
-    getContentOffset,
-  };
-};
 
 export function usePageLifeCycle(params?: IPageLifeCycle) {
   const navigation = useNavigation();
@@ -107,19 +97,38 @@ export const usePageUnMounted = (
   usePageLifeCycle({ onUnmounted });
 };
 
+export const useSafeAreaBottom = () => {
+  const pageType = usePageType();
+  const { safeAreaEnabled } = useContext(PageContext);
+  const { bottom } = useSafeAreaInsets();
+  return safeAreaEnabled && pageType === EPageType.modal ? bottom : 0;
+};
+
+export const TAB_BAR_HEIGHT = 54;
+
+export const useTabBarHeight = () => {
+  const { bottom } = useSafeAreaInsets();
+  const pageType = usePageType();
+  return pageType === EPageType.modal ? 0 : TAB_BAR_HEIGHT + bottom;
+};
+
 export const useSafeKeyboardAnimationStyle = () => {
-  const { bottom: safeBottomHeight } = useSafeAreaInsets();
+  const safeBottomHeight = useSafeAreaBottom();
   const keyboardHeightValue = useSharedValue(0);
   const animatedStyles = useAnimatedStyle(() => ({
     paddingBottom: keyboardHeightValue.value + safeBottomHeight,
   }));
+
+  const tabBarHeight = useTabBarHeight();
   useKeyboardEvent({
     keyboardWillShow: (e) => {
       const keyboardHeight = e.endCoordinates.height;
-      keyboardHeightValue.value = withTiming(keyboardHeight - safeBottomHeight);
+      keyboardHeightValue.value = updateHeightWhenKeyboardShown(
+        keyboardHeight - safeBottomHeight - tabBarHeight,
+      );
     },
     keyboardWillHide: () => {
-      keyboardHeightValue.value = withTiming(0);
+      keyboardHeightValue.value = updateHeightWhenKeyboardHide();
     },
   });
   return platformEnv.isNative ? animatedStyles : undefined;

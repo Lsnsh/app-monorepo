@@ -1,9 +1,22 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
+
+import { useIntl } from 'react-intl';
 
 import { Toast } from '@onekeyhq/components';
 import { useSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
-import { usePasswordWebAuthInfoAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms/password';
+import {
+  usePasswordPersistAtom,
+  usePasswordWebAuthInfoAtom,
+} from '@onekeyhq/kit-bg/src/states/jotai/atoms/password';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import {
+  EModalRoutes,
+  EModalSettingRoutes,
+  ERootRoutes,
+} from '@onekeyhq/shared/src/routes';
 
+import backgroundApiProxy from '../../../background/instance/backgroundApiProxy';
 import WebAuthSwitch from '../components/WebAuthSwitch';
 import { useWebAuthActions } from '../hooks/useWebAuthActions';
 
@@ -14,41 +27,41 @@ interface IWebAuthSwitchContainerProps {
 const WebAuthSwitchContainer = ({
   skipRegistration,
 }: IWebAuthSwitchContainerProps) => {
-  const [{ isSupport, isEnable }] = usePasswordWebAuthInfoAtom();
+  const intl = useIntl();
+  const [{ isSupport }] = usePasswordWebAuthInfoAtom();
+  const [{ webAuthCredentialId: credId }] = usePasswordPersistAtom();
   const { setWebAuthEnable } = useWebAuthActions();
-  const [settingsPersistAtom, setPasswordPersist] = useSettingsPersistAtom();
-  const webAuthSwitchOpen = useMemo(() => {
-    if (skipRegistration) {
-      return isSupport && settingsPersistAtom.isBiologyAuthSwitchOn;
-    }
-    return isEnable;
-  }, [
-    isEnable,
-    isSupport,
-    settingsPersistAtom.isBiologyAuthSwitchOn,
-    skipRegistration,
-  ]);
+  const [settingsPersistAtom] = useSettingsPersistAtom();
   const onChange = useCallback(
     async (checked: boolean) => {
       try {
         if (!skipRegistration) {
-          await setWebAuthEnable(checked);
+          if (checked) {
+            const res = await setWebAuthEnable(checked);
+            if (res) {
+              await backgroundApiProxy.serviceSetting.setBiologyAuthSwitchOn(
+                checked,
+              );
+            }
+          }
         }
-        setPasswordPersist((v) => ({
-          ...v,
-          isBiologyAuthSwitchOn: checked,
-        }));
+        if (skipRegistration || !checked) {
+          await backgroundApiProxy.serviceSetting.setBiologyAuthSwitchOn(
+            checked,
+          );
+        }
       } catch (e: any) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        Toast.error({ title: e?.message || 'Failed to set web auth' });
+        Toast.error({
+          title: intl.formatMessage({ id: ETranslations.Toast_web_auth }),
+        });
       }
     },
-    [setPasswordPersist, setWebAuthEnable, skipRegistration],
+    [skipRegistration, setWebAuthEnable, intl],
   );
   return (
     <WebAuthSwitch
       isSupport={isSupport}
-      isWebAuthEnable={webAuthSwitchOpen}
+      isWebAuthEnable={settingsPersistAtom.isBiologyAuthSwitchOn}
       onChange={onChange}
     />
   );

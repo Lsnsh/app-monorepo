@@ -5,6 +5,7 @@
     "components/**",
     "hooks/**",
     "provider/Container/**",
+    "provider/demo/**",
     "routes/config/**",
     "routes/Modal/*",
     "routes/Tab/*",
@@ -13,7 +14,8 @@
     "views/*/background",
     "views/*/pages/**",
     "views/*/config/*",
-    "views/*/components/*",
+    "views/*/components/**",
+    "views/*/assets/*",
     "views/*/hooks",
     "views/*/router",
     "views/*/utils/**"

@@ -1,8 +1,11 @@
 import { useMemo } from 'react';
 
+import { useIntl } from 'react-intl';
+
 import type { IKeyOfIcons } from '@onekeyhq/components';
 import { Alert, Dialog, SizableText, YStack } from '@onekeyhq/components';
 import type { IAlertType } from '@onekeyhq/components/src/actions/Alert';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import {
   EHostSecurityLevel,
   type IHostSecurity,
@@ -15,11 +18,12 @@ function DAppRiskyAlert({
   origin: string;
   urlSecurityInfo?: IHostSecurity;
 }) {
+  const intl = useIntl();
   const riskStyle = useMemo(() => {
     const defaultStyle = {
-      type: 'success',
+      type: 'default',
       alertIcon: 'InfoCircleSolid',
-      titleTextColor: '$textSuccess',
+      titleTextColor: '$text',
       descTextColor: '$textSubdued',
     };
     if (!urlSecurityInfo?.level) {
@@ -41,11 +45,11 @@ function DAppRiskyAlert({
         descTextColor: '$textCautionStrong',
       };
     }
-    if (urlSecurityInfo?.level === EHostSecurityLevel.Unknown) {
+    if (urlSecurityInfo?.level === EHostSecurityLevel.Security) {
       return {
-        type: 'default',
+        type: 'success',
         alertIcon: 'InfoCircleSolid',
-        titleTextColor: '$text',
+        titleTextColor: '$textSuccess',
         descTextColor: '$textSubdued',
       };
     }
@@ -54,7 +58,7 @@ function DAppRiskyAlert({
 
   const DialogContent = useMemo(
     () => (
-      <YStack space="$1">
+      <YStack gap="$1">
         <SizableText size="$bodyLgMedium" color={riskStyle.titleTextColor}>
           {urlSecurityInfo?.detail?.title ?? ''}
         </SizableText>
@@ -74,22 +78,30 @@ function DAppRiskyAlert({
     return null;
   }
 
+  if (urlSecurityInfo?.level === EHostSecurityLevel.Unknown) {
+    return null;
+  }
+
   return (
     <Alert
       fullBleed
       type={riskStyle.type as IAlertType}
       title={urlSecurityInfo?.alert ?? ''}
       icon={riskStyle.alertIcon as IKeyOfIcons}
-      action={{
-        primary: 'Details',
-        onPrimaryPress: () => {
-          Dialog.show({
-            title: origin,
-            renderContent: DialogContent,
-            showFooter: false,
-          });
-        },
-      }}
+      action={
+        urlSecurityInfo?.detail
+          ? {
+              primary: intl.formatMessage({ id: ETranslations.global_details }),
+              onPrimaryPress: () => {
+                Dialog.show({
+                  title: origin,
+                  renderContent: DialogContent,
+                  showFooter: false,
+                });
+              },
+            }
+          : undefined
+      }
       borderTopWidth={0}
     />
   );

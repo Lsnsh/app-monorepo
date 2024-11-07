@@ -14,17 +14,27 @@ import { ContextJotaiActionsBase } from '../../utils/ContextJotaiActionsBase';
 import {
   contextAtomMethod,
   customFeeAtom,
+  isSinglePresetAtom,
   nativeTokenInfoAtom,
   nativeTokenTransferAmountAtom,
   nativeTokenTransferAmountToUpdateAtom,
+  preCheckTxStatusAtom,
   sendFeeStatusAtom,
   sendSelectedFeeAtom,
   sendSelectedFeeInfoAtom,
   sendTxStatusAtom,
+  tokenApproveInfoAtom,
+  txAdvancedSettingsAtom,
   unsignedTxsAtom,
 } from './atoms';
 
 class ContextJotaiActionsSendConfirm extends ContextJotaiActionsBase {
+  updateIsSinglePreset = contextAtomMethod(
+    (get, set, isSinglePreset: boolean) => {
+      set(isSinglePresetAtom(), isSinglePreset);
+    },
+  );
+
   updateUnsignedTxs = contextAtomMethod(
     (get, set, unsignedTxs: IUnsignedTxPro[]) => {
       set(unsignedTxsAtom(), unsignedTxs);
@@ -32,8 +42,15 @@ class ContextJotaiActionsSendConfirm extends ContextJotaiActionsBase {
   );
 
   updateSendSelectedFee = contextAtomMethod(
-    (get, set, sendSelectedFee: { feeType: EFeeType; presetIndex: number }) => {
-      set(sendSelectedFeeAtom(), sendSelectedFee);
+    (
+      get,
+      set,
+      sendSelectedFee: { feeType?: EFeeType; presetIndex?: number },
+    ) => {
+      set(sendSelectedFeeAtom(), {
+        ...get(sendSelectedFeeAtom()),
+        ...sendSelectedFee,
+      });
     },
   );
 
@@ -42,8 +59,19 @@ class ContextJotaiActionsSendConfirm extends ContextJotaiActionsBase {
   });
 
   updateSendSelectedFeeInfo = contextAtomMethod(
-    (get, set, feeInfo: ISendSelectedFeeInfo) => {
-      set(sendSelectedFeeInfoAtom(), feeInfo);
+    (
+      get,
+      set,
+      payload: {
+        feeInfos: ISendSelectedFeeInfo[];
+        total: string;
+        totalNative: string;
+        totalFiat: string;
+        totalNativeForDisplay: string;
+        totalFiatForDisplay: string;
+      },
+    ) => {
+      set(sendSelectedFeeInfoAtom(), payload);
     },
   );
 
@@ -80,6 +108,7 @@ class ContextJotaiActionsSendConfirm extends ContextJotaiActionsBase {
       get,
       set,
       payload: {
+        logoURI: string;
         balance: string;
         isLoading: boolean;
       },
@@ -94,9 +123,32 @@ class ContextJotaiActionsSendConfirm extends ContextJotaiActionsBase {
       set,
       status: {
         isInsufficientNativeBalance?: boolean;
+        isSubmitting?: boolean;
       },
     ) => {
-      set(sendTxStatusAtom(), status);
+      set(sendTxStatusAtom(), {
+        ...get(sendTxStatusAtom()),
+        ...status,
+      });
+    },
+  );
+
+  updatePreCheckTxStatus = contextAtomMethod((_, set, errorMessage: string) => {
+    set(preCheckTxStatusAtom(), { errorMessage });
+  });
+
+  updateTokenApproveInfo = contextAtomMethod(
+    (get, set, payload: { allowance: string; isUnlimited: boolean }) => {
+      set(tokenApproveInfoAtom(), payload);
+    },
+  );
+
+  updateTxAdvancedSettings = contextAtomMethod(
+    (get, set, payload: { nonce?: string; dataChanged?: boolean }) => {
+      set(txAdvancedSettingsAtom(), {
+        ...get(txAdvancedSettingsAtom()),
+        ...payload,
+      });
     },
   );
 }
@@ -119,6 +171,10 @@ export function useSendConfirmActions() {
     actions.updateNativeTokenTransferAmountToUpdate.use();
   const updateSendTxStatus = actions.updateSendTxStatus.use();
   const updateNativeTokenInfo = actions.updateNativeTokenInfo.use();
+  const updateIsSinglePreset = actions.updateIsSinglePreset.use();
+  const updatePreCheckTxStatus = actions.updatePreCheckTxStatus.use();
+  const updateTokenApproveInfo = actions.updateTokenApproveInfo.use();
+  const updateTxAdvancedSettings = actions.updateTxAdvancedSettings.use();
 
   return useRef({
     updateUnsignedTxs,
@@ -130,5 +186,9 @@ export function useSendConfirmActions() {
     updateNativeTokenTransferAmountToUpdate,
     updateSendTxStatus,
     updateNativeTokenInfo,
+    updateIsSinglePreset,
+    updatePreCheckTxStatus,
+    updateTokenApproveInfo,
+    updateTxAdvancedSettings,
   });
 }

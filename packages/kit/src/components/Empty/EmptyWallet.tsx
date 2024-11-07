@@ -1,23 +1,27 @@
-import { Empty } from '@onekeyhq/components';
-import { EModalRoutes, EOnboardingPages } from '@onekeyhq/shared/src/routes';
+import { useIntl } from 'react-intl';
 
-import useAppNavigation from '../../hooks/useAppNavigation';
+import { Empty } from '@onekeyhq/components';
+import { useToOnBoardingPage } from '@onekeyhq/kit/src/views/Onboarding/pages';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 
 function EmptyWallet() {
-  const navigation = useAppNavigation();
-
+  const intl = useIntl();
+  const toOnBoardingPage = useToOnBoardingPage();
   return (
     <Empty
       testID="Wallet-No-Wallet-Empty"
       icon="WalletCryptoOutline"
-      title="No Wallet"
-      description="Create one to start managing your cryptocurrency safely and efficiently"
+      title={intl.formatMessage({ id: ETranslations.global_no_wallet })}
+      description={intl.formatMessage({
+        id: ETranslations.global_no_wallet_desc,
+      })}
       buttonProps={{
-        children: 'Create Wallet',
-        onPress: () =>
-          navigation.pushFullModal(EModalRoutes.OnboardingModal, {
-            screen: EOnboardingPages.GetStarted,
-          }),
+        children: intl.formatMessage({
+          id: ETranslations.global_create_wallet,
+        }),
+        onPress: () => {
+          void toOnBoardingPage();
+        },
       }}
     />
   );

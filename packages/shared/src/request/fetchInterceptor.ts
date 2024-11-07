@@ -3,7 +3,10 @@ import { forEach, isNil, isString } from 'lodash';
 
 import { checkIsOneKeyDomain } from '@onekeyhq/kit-bg/src/endpoints';
 
-import { getRequestHeaders } from './Interceptor';
+import { defaultLogger } from '../logger/logger';
+import { isEnableLogNetwork } from '../logger/scopes/app/scenes/network';
+
+import { HEADER_REQUEST_ID_KEY, getRequestHeaders } from './Interceptor';
 
 function getUrlFromResource(resource: RequestInfo | URL | string) {
   if (isString(resource)) {
@@ -53,8 +56,10 @@ const newFetch = async function (
 
   const url = getUrlFromResource(resource);
   const isOneKeyDomain = await checkIsOneKeyDomain(url);
+  let requestId: string | undefined;
   if (isOneKeyDomain) {
     const headers = await getRequestHeaders();
+    requestId = headers[HEADER_REQUEST_ID_KEY];
     forEach(headers, (val, key) => {
       if (
         key &&
@@ -70,17 +75,49 @@ const newFetch = async function (
     });
   }
 
+  if (isEnableLogNetwork(url)) {
+    defaultLogger.app.network.start('fetch', options.method, url, requestId);
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-return
   return (
     fetchOrigin
       // @ts-ignore
       .call(this, resource, options, ...others)
-      .then((res) => res.clone())
+      .then((res) => {
+        if (isEnableLogNetwork(url)) {
+          defaultLogger.app.network.end({
+            requestType: 'fetch',
+            method: options?.method as string,
+            path: url,
+            statusCode: res.status,
+            requestId,
+          });
+        }
+        return res.clone();
+      })
+      .catch((e: unknown) => {
+        if (e) {
+          defaultLogger.app.network.error({
+            requestType: 'fetch',
+            method: options?.method as string,
+            path: url,
+            statusCode:
+              typeof e === 'object' && 'code' in e ? (e.code as number) : -1,
+            errorMessage:
+              typeof e === 'object' && 'message' in e
+                ? (e.message as string)
+                : String(e),
+            requestId,
+          });
+        }
+        throw e;
+      })
   );
 };
 console.log('fetchInterceptor.ts', fetch);
 // @ts-ignore
-if (global.fetch && !global.fetch.isNormalizedByOneKey) {
+if (globalThis.fetch && !globalThis.fetch.isNormalizedByOneKey) {
   // **** for global instance of fetch
-  global.fetch = newFetch;
+  globalThis.fetch = newFetch;
 }

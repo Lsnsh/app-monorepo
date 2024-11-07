@@ -1,8 +1,13 @@
+import { Children } from 'react';
+
+import { useIntl } from 'react-intl';
+
 import type {
   IActionListProps,
   IButtonProps,
   IIconButtonProps,
   IKeyOfIcons,
+  IStackProps,
   IXStackProps,
 } from '@onekeyhq/components';
 import {
@@ -14,15 +19,18 @@ import {
   XStack,
   useMedia,
 } from '@onekeyhq/components';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 
-type IActionItemsProps = {
+export type IActionItemsProps = {
   icon?: IKeyOfIcons;
   label?: string;
+  verticalContainerProps?: IStackProps;
 } & Partial<IButtonProps & IIconButtonProps>;
 
 function ActionItem({
   icon = 'PlaceholderOutline',
   label,
+  verticalContainerProps,
   ...rest
 }: IActionItemsProps) {
   const media = useMedia();
@@ -44,13 +52,15 @@ function ActionItem({
   }
 
   return (
-    <Stack>
+    <Stack alignItems="center" maxWidth={50} {...verticalContainerProps}>
       <IconButton size="large" icon={icon} {...rest} />
       <SizableText
         mt="$2"
         textAlign="center"
         size="$bodySm"
         color="$textSubdued"
+        minWidth="$20"
+        numberOfLines={1}
       >
         {label}
       </SizableText>
@@ -59,36 +69,89 @@ function ActionItem({
 }
 
 function ActionBuy(props: IActionItemsProps) {
-  return <ActionItem label="Buy" icon="PlusLargeOutline" {...props} />;
+  const intl = useIntl();
+  return (
+    <ActionItem
+      label={intl.formatMessage({ id: ETranslations.global_buy })}
+      icon="PlusLargeOutline"
+      {...props}
+    />
+  );
 }
 
 function ActionSell(props: IActionItemsProps) {
-  return <ActionItem label="Sell" icon="MinusLargeOutline" {...props} />;
+  const intl = useIntl();
+  return (
+    <ActionItem
+      label={intl.formatMessage({ id: ETranslations.global_cash_out })}
+      icon="MinusLargeOutline"
+      {...props}
+    />
+  );
 }
 
 function ActionSend(props: IActionItemsProps) {
-  return <ActionItem label="Send" icon="ArrowTopOutline" {...props} />;
+  const intl = useIntl();
+  return (
+    <ActionItem
+      label={intl.formatMessage({ id: ETranslations.global_send })}
+      icon="ArrowTopOutline"
+      {...props}
+    />
+  );
 }
 
 function ActionReceive(props: IActionItemsProps) {
-  return <ActionItem label="Receive" icon="ArrowBottomOutline" {...props} />;
+  const intl = useIntl();
+  return (
+    <ActionItem
+      label={intl.formatMessage({ id: ETranslations.global_receive })}
+      icon="ArrowBottomOutline"
+      {...props}
+    />
+  );
 }
 
 function ActionSwap(props: IActionItemsProps) {
-  return <ActionItem label="Swap" icon="SwitchHorOutline" {...props} />;
+  const intl = useIntl();
+  return (
+    <ActionItem
+      label={intl.formatMessage({ id: ETranslations.global_swap })}
+      icon="SwitchHorOutline"
+      {...props}
+    />
+  );
+}
+
+function ActionBridge(props: IActionItemsProps) {
+  const intl = useIntl();
+  return (
+    <ActionItem
+      label={intl.formatMessage({ id: ETranslations.swap_page_bridge })}
+      icon="BridgeOutline"
+      {...props}
+    />
+  );
 }
 
 function ActionMore({ sections }: { sections: IActionListProps['sections'] }) {
+  const intl = useIntl();
   const media = useMedia();
-
   return (
     <ActionList
-      title="More"
+      title={intl.formatMessage({
+        id: ETranslations.global_more,
+      })}
+      floatingPanelProps={{
+        w: '$60',
+      }}
       renderTrigger={
         <ActionItem
           icon="DotHorOutline"
           {...(media.sm && {
-            label: 'More',
+            label: intl.formatMessage({
+              id: ETranslations.global_more,
+            }),
           })}
         />
       }
@@ -102,12 +165,13 @@ function RawActions({ children, ...rest }: IXStackProps) {
     <XStack
       justifyContent="space-between"
       $gtSm={{
-        justifyContent: 'unset',
-        space: '$2',
+        flexDirection: 'row', // override the 'column' direction set in packages/kit/src/views/AssetDetails/pages/TokenDetails/TokenDetailsHeader.tsx 205L
+        justifyContent: 'flex-start',
+        gap: '$2',
       }}
       {...rest}
     >
-      {children}
+      {Children.toArray(children)}
     </XStack>
   );
 }
@@ -118,5 +182,6 @@ RawActions.Sell = ActionSell;
 RawActions.Send = ActionSend;
 RawActions.Receive = ActionReceive;
 RawActions.Swap = ActionSwap;
+RawActions.Bridge = ActionBridge;
 
-export { RawActions };
+export { RawActions, ActionItem };

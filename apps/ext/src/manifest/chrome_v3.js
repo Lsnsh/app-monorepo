@@ -28,6 +28,7 @@ module.exports = {
   // browser_action
   'action': {
     'default_icon': {
+      '48': 'icon-48.png',
       '128': 'icon-128.png',
     },
     'default_title': 'OneKey',
@@ -110,17 +111,15 @@ module.exports = {
     // '*://*.onekeycn.com/*',
     // '*://*.onekeytest.com/*',
     // '*://*.eth/',
-    'tabs',
+    'activeTab',
     'storage',
     'unlimitedStorage',
     'webRequest',
     // 'webRequestBlocking' requires manifest version of 2 or lower.
     // 'webRequestBlocking',
-    // 'clipboardWrite',
     'notifications',
-    // 'activeTab',
-    // 'webRequest',
     'idle',
     'sidePanel',
+    'contextMenus',
   ],
 };

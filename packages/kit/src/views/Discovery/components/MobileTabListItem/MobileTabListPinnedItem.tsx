@@ -26,7 +26,6 @@ function MobileTabListPinnedItem({
   const isActive = activeTabId === id;
   return (
     <Stack
-      flex={1}
       p="$0.5"
       minWidth="$28"
       maxWidth="$40"
@@ -62,7 +61,7 @@ function MobileTabListPinnedItem({
           </Image.Loading>
         </Image>
         <SizableText flex={1} size="$bodySm" numberOfLines={1} ml="$2">
-          {tab?.title || ''}
+          {(tab?.customTitle?.length ?? 0) > 0 ? tab?.customTitle : tab?.title}
         </SizableText>
       </XStack>
     </Stack>

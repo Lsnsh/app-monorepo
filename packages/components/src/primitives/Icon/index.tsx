@@ -5,7 +5,7 @@ import { styled, withStaticProperties } from 'tamagui';
 import { createSuspender } from '@onekeyhq/shared/src/modules3rdParty/use-suspender';
 
 import { useThemeValue } from '../../hooks/useStyle';
-import { View } from '../../optimization';
+import { OptimizationView } from '../../optimization';
 
 import ICON_CONFIG from './Icons';
 
@@ -81,7 +81,7 @@ function BasicIconContainer({ name, style }: IIconContainerProps, _: any) {
   ) : (
     <Suspense
       fallback={
-        <View
+        <OptimizationView
           style={{
             width: componentWidth,
             height: componentHeight,
@@ -121,8 +121,8 @@ const BasicIcon = styled(IconContainer, {
         //
         // But the 'width' and 'height' attributes of SVG don't accept CSS variables,
         // so you have to manually retrieve the values."
-        type SizeType = keyof typeof tokens.size;
-        const size = tokens.size[rawSize as SizeType].val;
+        type IBasicIconSizeType = keyof typeof tokens.size;
+        const size = tokens.size[rawSize as IBasicIconSizeType].val;
         return {
           width: size,
           height: size,
@@ -140,4 +140,5 @@ export const Icon = withStaticProperties(BasicIcon, {
 });
 
 export type { IKeyOfIcons };
-export type IIconProps = GetProps<typeof Icon> & IIconContainerProps;
+export type IIconProps = Omit<GetProps<typeof Icon>, 'name' | 'style'> &
+  IIconContainerProps;

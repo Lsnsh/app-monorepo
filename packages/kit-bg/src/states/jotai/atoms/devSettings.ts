@@ -8,8 +8,12 @@ export interface IDevSettings {
   enableTestEndpoint?: boolean;
   // enable dev overlay window
   showDevOverlayWindow?: boolean;
-  // show copy/paste button in onboarding page
-  enableCopyPasteInOnboardingPage?: boolean;
+  // always signOnly send tx
+  alwaysSignOnlySendTx?: boolean;
+  // show dev export private key
+  showDevExportPrivateKey?: boolean;
+  // show trading view
+  showTradingView?: boolean;
 }
 
 export type IDevSettingsKeys = keyof IDevSettings;
@@ -25,6 +29,67 @@ export const {
   persist: true,
   name: EAtomNames.devSettingsPersistAtom,
   initialValue: {
-    enabled: !!platformEnv.isDev,
+    enabled: !!platformEnv.isDev || !!platformEnv.isE2E,
+    settings: {
+      enableTestEndpoint: !!platformEnv.isDev || !!platformEnv.isE2E,
+      showDevOverlayWindow: !!platformEnv.isE2E,
+      showTradingView: false,
+    },
+  },
+});
+
+export type IFirmwareUpdateDevSettings = {
+  lowBatteryLevel: boolean;
+  shouldUpdateBridge: boolean;
+  shouldUpdateFullRes: boolean;
+  shouldUpdateFromWeb: boolean;
+  allIsUpToDate: boolean;
+  usePreReleaseConfig: boolean;
+  forceUpdateResEvenSameVersion: boolean;
+  forceUpdateFirmware: boolean;
+  forceUpdateBle: boolean;
+  forceUpdateBootloader: boolean;
+  showDeviceDebugLogs: boolean;
+  showAutoCheckHardwareUpdatesToast: boolean;
+};
+export type IFirmwareUpdateDevSettingsKeys = keyof IFirmwareUpdateDevSettings;
+export const {
+  target: firmwareUpdateDevSettingsPersistAtom,
+  use: useFirmwareUpdateDevSettingsPersistAtom,
+} = globalAtom<IFirmwareUpdateDevSettings>({
+  persist: true,
+  name: EAtomNames.firmwareUpdateDevSettingsPersistAtom,
+  initialValue: {
+    lowBatteryLevel: false,
+    shouldUpdateBridge: false,
+    shouldUpdateFullRes: false,
+    shouldUpdateFromWeb: false,
+    allIsUpToDate: false,
+    usePreReleaseConfig: false,
+    forceUpdateResEvenSameVersion: false,
+    forceUpdateFirmware: false,
+    forceUpdateBle: false,
+    forceUpdateBootloader: false,
+    showDeviceDebugLogs: false,
+    showAutoCheckHardwareUpdatesToast: false,
+  },
+});
+
+export type INotificationsDevSettings = {
+  showMessagePushSource?: boolean;
+  disabledWebSocket?: boolean;
+  disabledJPush?: boolean;
+};
+export type INotificationsDevSettingsKeys = keyof INotificationsDevSettings;
+export const {
+  target: notificationsDevSettingsPersistAtom,
+  use: useNotificationsDevSettingsPersistAtom,
+} = globalAtom<INotificationsDevSettings>({
+  persist: true,
+  name: EAtomNames.notificationsDevSettingsPersistAtom,
+  initialValue: {
+    showMessagePushSource: false,
+    disabledWebSocket: false,
+    disabledJPush: false,
   },
 });

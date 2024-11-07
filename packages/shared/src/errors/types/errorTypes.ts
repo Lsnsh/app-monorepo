@@ -1,21 +1,41 @@
-import type { ILocaleIds } from '@onekeyhq/shared/src/locale';
+import type {
+  ETranslations,
+  ETranslationsMock,
+} from '@onekeyhq/shared/src/locale';
 
 export enum ECustomOneKeyHardwareError {
   NeedOneKeyBridge = 3030,
   // TODO: remove this error code
   NeedFirmwareUpgrade = 4030,
+  NeedOneKeyBridgeUpgrade = 4031,
+  NeedFirmwareUpgradeFromWeb = 4032,
+  DeviceMethodCallTimeout = 4080,
+  FirmwareUpdateBatteryTooLow = 4081,
 }
 
 export enum EOneKeyErrorClassNames {
   OneKeyError = 'OneKeyError',
   OneKeyHardwareError = 'OneKeyHardwareError',
   UnknownHardwareError = 'UnknownHardwareError',
+  OneKeyServerApiError = 'OneKeyServerApiError',
   OneKeyValidatorError = 'OneKeyValidatorError',
   OneKeyValidatorTip = 'OneKeyValidatorTip',
   OneKeyAbortError = 'OneKeyAbortError',
+  AxiosAbortCancelError = 'AxiosAbortCancelError',
+  AxiosNetworkError = 'AxiosNetworkError',
   OneKeyWalletConnectModalCloseError = 'OneKeyWalletConnectModalCloseError',
   OneKeyAlreadyExistWalletError = 'OneKeyAlreadyExistWalletError',
+  PasswordPromptDialogCancel = 'PasswordPromptDialogCancel',
+  VaultKeyringNotDefinedError = 'VaultKeyringNotDefinedError',
   OneKeyErrorInsufficientNativeBalance = 'OneKeyErrorInsufficientNativeBalance',
+  OneKeyErrorNotImplemented = 'OneKeyErrorNotImplemented',
+  OneKeyErrorAirGapAccountNotFound = 'OneKeyErrorAirGapAccountNotFound',
+  OneKeyErrorAirGapStandardWalletRequiredWhenCreateHiddenWallet = 'OneKeyErrorAirGapStandardWalletRequiredWhenCreateHiddenWallet',
+  OneKeyErrorScanQrCodeCancel = 'OneKeyErrorScanQrCodeCancel',
+  SecureQRCodeDialogCancel = 'SecureQRCodeDialogCancel',
+  HardwareUserCancelFromOutside = 'HardwareUserCancelFromOutside',
+  FirmwareUpdateExit = 'FirmwareUpdateExit',
+  FirmwareUpdateTasksClear = 'FirmwareUpdateTasksClear',
 }
 
 export type IOneKeyErrorI18nInfo = Record<string | number, string | number>;
@@ -39,13 +59,25 @@ export interface IOneKeyError<
   data?: DataT;
   // ---- OneKeyError props
   className?: EOneKeyErrorClassNames;
-  key?: ILocaleIds; // i18n key
+  key?: ETranslations | ETranslationsMock; // i18n key
   info?: InfoT; // i18n params
   constructorName?: string;
+  /*
+  error.autoToast workflow:
+    UI -> BackgroundApiProxyBase.constructor -> globalErrorHandler.addListener -> error.autoToast===true -> appEventBus.emit(EAppEventBusNames.ShowToast) -> ErrorToastContainer -> appEventBus.on('ShowToast') -> Toast.show
+
+  example: 
+    ErrorToastGallery.tsx
+  */
   autoToast?: boolean; // TODO move to $$config: { autoToast, reconnect }
   // ---- hardwareError props
   payload?: IOneKeyHardwareErrorPayload; // raw payload from hardware sdk error response
   reconnect?: boolean;
+  $isHardwareError?: boolean;
+
+  // ---server props
+  requestId?: string;
+  disableFallbackMessage?: boolean;
 }
 
 export type IOneKeyHardwareErrorPayload = {
@@ -65,4 +97,20 @@ export type IOneKeyHardwareErrorData = {
 
 export type IOneKeyErrorMeta = {
   defaultMessage?: string;
+};
+
+export type IOneKeyRpcError = {
+  req: {
+    method: string;
+    params: [any];
+  };
+  res: {
+    id: number;
+    jsonrpc: string;
+    error: {
+      code: number;
+      message: string;
+      data: string;
+    };
+  };
 };

@@ -66,12 +66,35 @@ const EmptyGallery = LazyLoadPage(
       '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/Empty'
     ),
 );
+
+const SendGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/SendGallery'
+    ),
+);
+
 const ErrorToastGallery = LazyLoadPage(
   () =>
     import(
       '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/ErrorToastGallery'
     ),
 );
+
+const FirmwareUpdateGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/FirmwareUpdateGallery'
+    ),
+);
+
+const QRWalletGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/QRWalletGallery'
+    ),
+);
+
 const FormGallery = LazyLoadPage(
   () =>
     import(
@@ -192,6 +215,12 @@ const QRCodeGallery = LazyLoadPage(
       '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/QRCode'
     ),
 );
+const SecureQRToastGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/SecureQRToast'
+    ),
+);
 const RadioGallery = LazyLoadPage(
   () =>
     import(
@@ -264,10 +293,10 @@ const SortableSectionListGallery = LazyLoadPage(
       '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/SortableSectionList'
     ),
 );
-const SpotlightTourGallery = LazyLoadPage(
+const SpotlightGallery = LazyLoadPage(
   () =>
     import(
-      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/SpotlightTour'
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/Spotlight'
     ),
 );
 const SwipeableCellGallery = LazyLoadPage(
@@ -374,6 +403,76 @@ const ChainSelectorGallery = LazyLoadPage(
     ),
 );
 
+const MarkdownGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/Markdown'
+    ),
+);
+
+const NotificationGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/NotificationGallery'
+    ),
+);
+
+const WebEmbedGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/WebEmbed'
+    ),
+);
+
+const DotMapGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/DotMap'
+    ),
+);
+
+const UsePromiseResultGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/UsePromiseResult'
+    ),
+);
+
+const ImageCropGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/ImageCrop'
+    ),
+);
+
+const CurrencyGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/Currency'
+    ),
+);
+
+const PasswordKeyboardGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/PasswordKeyboard'
+    ),
+);
+
+const TradingViewGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/TradingView'
+    ),
+);
+
+const LetterAvatarGallery = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Developer/pages/Gallery/Components/stories/LetterAvatar'
+    ),
+);
+
 export const galleryScreenList: {
   name: EGalleryRoutes;
   component: ComponentType;
@@ -404,6 +503,7 @@ export const galleryScreenList: {
   { name: EGalleryRoutes.ComponentInput, component: InputGallery },
   { name: EGalleryRoutes.ComponentDialog, component: DialogGallery },
   { name: EGalleryRoutes.ComponentEmpty, component: EmptyGallery },
+  { name: EGalleryRoutes.ComponentSend, component: SendGallery },
   { name: EGalleryRoutes.ComponentRadio, component: RadioGallery },
   { name: EGalleryRoutes.ComponentListView, component: ListViewGallery },
   {
@@ -430,7 +530,7 @@ export const galleryScreenList: {
   },
   {
     name: EGalleryRoutes.ComponentSpotlightTour,
-    component: SpotlightTourGallery,
+    component: SpotlightGallery,
   },
   {
     name: EGalleryRoutes.ComponentSortableSectionList,
@@ -478,6 +578,14 @@ export const galleryScreenList: {
   { name: EGalleryRoutes.ComponentLocalDB, component: LocalDBGallery },
   { name: EGalleryRoutes.ComponentErrorToast, component: ErrorToastGallery },
   {
+    name: EGalleryRoutes.ComponentFirmwareUpdate,
+    component: FirmwareUpdateGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentQRWallet,
+    component: QRWalletGallery,
+  },
+  {
     name: EGalleryRoutes.ComponentForm,
     component: FormGallery,
   },
@@ -488,6 +596,10 @@ export const galleryScreenList: {
   {
     name: EGalleryRoutes.componentQRCode,
     component: QRCodeGallery,
+  },
+  {
+    name: EGalleryRoutes.componentSecureQRToast,
+    component: SecureQRToastGallery,
   },
   {
     name: EGalleryRoutes.componentScanQrCode,
@@ -532,5 +644,45 @@ export const galleryScreenList: {
   {
     name: EGalleryRoutes.ComponentChainSelector,
     component: ChainSelectorGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentMarkdown,
+    component: MarkdownGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentNotification,
+    component: NotificationGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentWebEmbed,
+    component: WebEmbedGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentDotMap,
+    component: DotMapGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentUsePromiseResult,
+    component: UsePromiseResultGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentImageCropGallery,
+    component: ImageCropGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentCurrency,
+    component: CurrencyGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentPasswordKeyboardGallery,
+    component: PasswordKeyboardGallery,
+  },
+  {
+    name: EGalleryRoutes.ComponentTradingViewGallery,
+    component: TradingViewGallery,
+  },
+  {
+    name: EGalleryRoutes.LetterAvatarGallery,
+    component: LetterAvatarGallery,
   },
 ];

@@ -2,6 +2,7 @@ import type { DependencyList } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Keyboard } from 'react-native';
+import { withTiming } from 'react-native-reanimated';
 
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
@@ -9,10 +10,10 @@ import type { KeyboardEventListener } from 'react-native';
 
 export { default as useIsKeyboardShown } from '@react-navigation/bottom-tabs/src/utils/useIsKeyboardShown';
 
-const showEventName = platformEnv.isNativeIOS
+export const KEYBOARD_SHOW_EVENT_NAME = platformEnv.isNativeIOS
   ? 'keyboardWillShow'
   : 'keyboardDidShow';
-const hideEventName = platformEnv.isNativeIOS
+export const KEYBOARD_HIDE_EVENT_NAME = platformEnv.isNativeIOS
   ? 'keyboardWillHide'
   : 'keyboardDidHide';
 
@@ -30,8 +31,8 @@ export function useKeyboardHeight() {
 
   useEffect(() => {
     const subscriptions = [
-      Keyboard.addListener(showEventName, handleKeyboardWillShow),
-      Keyboard.addListener(hideEventName, handleKeyboardWillHide),
+      Keyboard.addListener(KEYBOARD_SHOW_EVENT_NAME, handleKeyboardWillShow),
+      Keyboard.addListener(KEYBOARD_HIDE_EVENT_NAME, handleKeyboardWillHide),
     ];
 
     return () => {
@@ -55,12 +56,12 @@ export const useKeyboardEvent = (
 ) => {
   useEffect(() => {
     const showSubscription = Keyboard.addListener(
-      showEventName,
+      KEYBOARD_SHOW_EVENT_NAME,
       keyboardWillShow,
     );
 
     const hideSubscription = Keyboard.addListener(
-      hideEventName,
+      KEYBOARD_HIDE_EVENT_NAME,
       keyboardWillHide,
     );
     return () => {
@@ -70,3 +71,13 @@ export const useKeyboardEvent = (
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 };
+
+export const updateHeightWhenKeyboardShown = (height: number) =>
+  withTiming(height, {
+    duration: platformEnv.isNativeIOS ? 200 : 30,
+  });
+
+export const updateHeightWhenKeyboardHide = (height = 0) =>
+  withTiming(height, {
+    duration: 250,
+  });

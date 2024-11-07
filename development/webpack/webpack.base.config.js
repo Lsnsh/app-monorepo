@@ -5,25 +5,34 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const webpackManifestPlugin = require('webpack-manifest-plugin');
 const ProgressBarPlugin = require('progress-bar-webpack-plugin');
 const notifier = require('node-notifier');
+const { exit } = require('process');
 const { createResolveExtensions } = require('./utils');
 const { isDev, PUBLIC_URL, NODE_ENV, ONEKEY_PROXY } = require('./constant');
+
+const IS_EAS_BUILD = !!process.env.EAS_BUILD;
 
 class BuildDoneNotifyPlugin {
   apply(compiler) {
     compiler.hooks.done.tap('BuildDoneNotifyPlugin', (compilation) => {
-      const msg = `OneKey Build at ${new Date().toLocaleTimeString()}, completed in ${
-        (compilation.endTime - compilation.startTime) / 1000
-      }s`;
-      setTimeout(() => {
-        console.log('\u001b[33m'); // yellow color
-        console.log('===================================');
-        console.log(msg);
-        console.log('===================================');
-        console.log('\u001b[0m'); // reset color
-      }, 300);
-      try {
-        notifier.notify(msg);
-      } catch {}
+      if (IS_EAS_BUILD) {
+        exit(0);
+      } else {
+        const msg = `OneKey Build at ${new Date().toLocaleTimeString()}, completed in ${
+          (compilation.endTime - compilation.startTime) / 1000
+        }s`;
+        setTimeout(() => {
+          console.log('\u001b[33m'); // yellow color
+          console.log('===================================');
+          console.log(msg);
+          console.log('===================================');
+          console.log('\u001b[0m'); // reset color
+        }, 300);
+        try {
+          notifier.notify(msg);
+        } catch {
+          // ignore
+        }
+      }
     });
   }
 }
@@ -67,10 +76,14 @@ module.exports = ({ platform, basePath, configName }) => ({
   output: {
     publicPath: PUBLIC_URL || '/',
     path: path.join(basePath, 'web-build'),
-    assetModuleFilename: 'static/media/[name].[hash][ext]',
+    assetModuleFilename: isDev
+      ? 'static/media/[name].[ext]'
+      : 'static/media/[name].[hash][ext]',
     uniqueName: 'web',
-    filename: '[name].[chunkhash:10].bundle.js',
-    chunkFilename: 'static/js/[name].[chunkhash:10].chunk.js',
+    filename: isDev ? '[name].bundle.js' : '[name].[chunkhash:10].bundle.js',
+    chunkFilename: isDev
+      ? 'static/js/[name].chunk.js'
+      : 'static/js/[name].[chunkhash:10].chunk.js',
   },
   plugins: [
     new HtmlWebpackPlugin({
@@ -205,7 +218,7 @@ module.exports = ({ platform, basePath, configName }) => ({
                   ),
                   components: ['tamagui'],
                   importsWhitelist: [],
-                  logTimings: true,
+                  logTimings: false,
                   disableExtraction: isDev,
                 },
               },
@@ -295,6 +308,9 @@ module.exports = ({ platform, basePath, configName }) => ({
         test: /\.worker\.(js|ts)$/,
         use: {
           loader: 'worker-loader',
+          options: {
+            inline: 'fallback',
+          },
         },
       },
     ],
@@ -339,7 +355,7 @@ module.exports = ({ platform, basePath, configName }) => ({
   experiments: {
     asyncWebAssembly: true,
   },
-  performance: { maxAssetSize: 600000, maxEntrypointSize: 600000 },
+  performance: { maxAssetSize: 600_000, maxEntrypointSize: 600_000 },
 });
 
 module.exports.basePlugins = basePlugins;

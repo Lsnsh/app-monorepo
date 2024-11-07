@@ -1,4 +1,9 @@
-import type { ComponentType, PropsWithChildren, RefObject } from 'react';
+import type {
+  ComponentType,
+  PropsWithChildren,
+  ReactElement,
+  RefObject,
+} from 'react';
 import {
   forwardRef,
   useCallback,
@@ -8,18 +13,21 @@ import {
   useState,
 } from 'react';
 
-import { compact } from 'lodash';
-import { Dimensions, View } from 'react-native';
+import { compact, range } from 'lodash';
+import { useIntl } from 'react-intl';
+import { View } from 'react-native';
 
 import type {
   IButtonProps,
   IElement,
   IInputProps,
   IPageFooterProps,
+  IPasteEventParams,
   IPropsWithTestId,
 } from '@onekeyhq/components';
 import {
   Button,
+  EPasteEventPayloadItemType,
   Form,
   HeightTransition,
   Icon,
@@ -27,23 +35,23 @@ import {
   Page,
   Popover,
   ScrollView,
+  SecureView,
   Select,
   SizableText,
   Stack,
   XStack,
-  useClipboard,
   useForm,
   useIsKeyboardShown,
+  useKeyboardEvent,
   useMedia,
-  usePage,
 } from '@onekeyhq/components';
+import type { EMnemonicType } from '@onekeyhq/core/src/secret';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
-import { useShowCopyPasteButton, useSuggestion } from './hooks';
-import { Tutorials } from './Tutorials';
+import { PHRASE_LENGTHS, useSuggestion } from './hooks';
 
-import type { ITutorialsListItemProps } from './Tutorials';
 import type { ReturnKeyTypeOptions, TextInput, ViewProps } from 'react-native';
 
 const KeyDownView = View as unknown as ComponentType<
@@ -57,14 +65,6 @@ const KeyDownView = View as unknown as ComponentType<
     } & ViewProps
   >
 >;
-
-const phraseLengthOptions = [
-  { label: '12 words', value: '12' },
-  { label: '15 words', value: '15' },
-  { label: '18 words', value: '18' },
-  { label: '21 words', value: '21' },
-  { label: '24 words', value: '24' },
-];
 
 interface IWordItemProps {
   word: string;
@@ -81,6 +81,7 @@ function WordItem({
   number,
   ...rest
 }: IWordItemProps & Omit<IButtonProps, 'onPress' | 'children'>) {
+  const media = useMedia();
   const handlePress = useCallback(() => {
     onPress(word);
   }, [onPress, word]);
@@ -96,21 +97,23 @@ function WordItem({
       >
         {word}
       </Button>
-      <Stack
-        bg="$bg"
-        position="absolute"
-        right="$px"
-        top="$0"
-        height="$4"
-        width="$4"
-        justifyContent="center"
-        alignItems="center"
-        borderRadius="$full"
-      >
-        <SizableText size="$bodySmMedium" color="$textSubdued">
-          {number}
-        </SizableText>
-      </Stack>
+      {media.gtMd ? (
+        <Stack
+          bg="$bg"
+          position="absolute"
+          right="$px"
+          top="$0"
+          height="$4"
+          width="$4"
+          justifyContent="center"
+          alignItems="center"
+          borderRadius="$full"
+        >
+          <SizableText size="$bodySmMedium" color="$textSubdued">
+            {number}
+          </SizableText>
+        </Stack>
+      ) : null}
     </Stack>
   );
 }
@@ -187,9 +190,6 @@ function PageFooter({
   );
 }
 
-const { height: windowHeight } = Dimensions.get('window');
-const visibleHeight = windowHeight / 5;
-
 const PINYIN_COMPOSITION_SPACE = platformEnv.isNative
   ? String.fromCharCode(8198)
   : ' ';
@@ -199,9 +199,11 @@ function BasicPhaseInput(
     index,
     onChange,
     value,
+    isShowError = false,
     onInputChange,
     onInputFocus,
     onInputBlur,
+    onPasteMnemonic,
     suggestionsRef,
     updateInputValue,
     selectInputIndex,
@@ -213,9 +215,11 @@ function BasicPhaseInput(
   }: IPropsWithTestId<{
     value?: string;
     index: number;
+    isShowError: boolean;
     onInputChange: (value: string) => string;
     onChange?: (value: string) => void;
     onInputFocus: (index: number) => void;
+    onPasteMnemonic: (text: string, index: number) => void;
     onInputBlur: (index: number) => void;
     suggestionsRef: RefObject<string[]>;
     selectInputIndex: number;
@@ -229,7 +233,6 @@ function BasicPhaseInput(
 ) {
   const inputRef: RefObject<TextInput> | null = useRef(null);
   const media = useMedia();
-  const { getContentOffset, pageRef } = usePage();
   const firstButtonRef = useRef<IElement>(null);
   const [tabFocusable, setTabFocusable] = useState(false);
 
@@ -246,31 +249,8 @@ function BasicPhaseInput(
 
   const handleInputFocus = useCallback(() => {
     onInputFocus(index);
-    if (platformEnv.isNative && pageRef) {
-      inputRef.current?.measure(
-        (
-          x: number,
-          y: number,
-          width: number,
-          height: number,
-          pageX: number,
-          pageY: number,
-        ) => {
-          const contentOffset = getContentOffset();
-          console.log(x, y, pageX, pageY, contentOffset);
-          if (pageY > visibleHeight) {
-            setTimeout(() => {
-              pageRef.scrollTo({
-                x: 0,
-                y: contentOffset.y + pageY - visibleHeight,
-                animated: true,
-              });
-            });
-          }
-        },
-      );
-    }
-  }, [getContentOffset, index, onInputFocus, pageRef]);
+  }, [index, onInputFocus]);
+
   const handleInputBlur = useCallback(() => {
     onInputBlur(index);
   }, [index, onInputBlur]);
@@ -310,6 +290,16 @@ function BasicPhaseInput(
     [suggestionsRef, updateInputValue],
   );
 
+  const handlePaste = useCallback(
+    (event: IPasteEventParams) => {
+      const item = event.nativeEvent?.items?.[0];
+      if (item?.type === EPasteEventPayloadItemType.TextPlain && item.data) {
+        onPasteMnemonic(item?.data, index);
+      }
+    },
+    [index, onPasteMnemonic],
+  );
+
   const handleKeyPress = useCallback(
     (e: {
       keyCode: number;
@@ -334,7 +324,8 @@ function BasicPhaseInput(
     onReturnKeyPressed(index);
   }, [index, onReturnKeyPressed]);
 
-  const isShowValue = selectInputIndex !== index && value?.length;
+  const isShowValue =
+    selectInputIndex !== index && value?.length && !isShowError;
   const displayValue = isShowValue ? '••••' : value;
   const suggestions = suggestionsRef.current ?? [];
 
@@ -350,9 +341,11 @@ function BasicPhaseInput(
     size: media.md ? 'large' : 'medium',
     leftAddOnProps: {
       label: `${index + 1}`,
-      minWidth: '$10',
+      pr: '$0',
       justifyContent: 'center',
     },
+    onPaste: handlePaste,
+    error: isShowError,
     onChangeText: handleChangeText,
     onFocus: handleInputFocus,
     onBlur: handleInputBlur,
@@ -424,32 +417,42 @@ const PhaseInput = forwardRef(BasicPhaseInput);
 
 export function PhaseInputArea({
   onConfirm,
-  tutorials,
+  FooterComponent,
   showPhraseLengthSelector = true,
   showClearAllButton = true,
   defaultPhrases = [],
 }: {
-  onConfirm: (mnemonic: string) => void;
+  onConfirm: (params: {
+    mnemonic: string;
+    mnemonicType: EMnemonicType;
+  }) => void;
   showPhraseLengthSelector?: boolean;
   showClearAllButton?: boolean;
-  tutorials: ITutorialsListItemProps[];
+  FooterComponent?: ReactElement;
   defaultPhrases?: string[];
 }) {
-  const { serviceAccount, servicePassword } = backgroundApiProxy;
-  const defaultPhrasesMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    defaultPhrases?.forEach((text, i) => {
-      map[`phrase${i + 1}`] = text;
-    });
-    return map;
-  }, [defaultPhrases]);
-  const form = useForm({
-    defaultValues: defaultPhrasesMap,
-  });
-  const { getClipboard } = useClipboard();
+  const intl = useIntl();
+
+  const phraseLengths = PHRASE_LENGTHS;
+  const phraseLengthOptions = phraseLengths.map((length) => ({
+    label: intl.formatMessage({ id: ETranslations.count_words }, { length }),
+    value: `${length}`,
+  }));
+
   const [phraseLength, setPhraseLength] = useState(
     phraseLengthOptions[0].value,
   );
+  const { serviceAccount, servicePassword } = backgroundApiProxy;
+  const defaultPhrasesMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    range(0, Number(phraseLength))?.forEach((_, i) => {
+      map[`phrase${i + 1}`] = defaultPhrases[i] || '';
+    });
+    return map;
+  }, [defaultPhrases, phraseLength]);
+  const form = useForm({
+    defaultValues: defaultPhrasesMap,
+  });
 
   const invalidWordsLength = 0;
   const invalidPhrase = false;
@@ -460,18 +463,16 @@ export function PhaseInputArea({
     return `${length} invalid words`;
   };
 
-  const isShowCopyPasteButton = useShowCopyPasteButton();
-
   const handlePageFooterConfirm = useCallback(async () => {
     const mnemonic: string = Object.values(form.getValues()).join(' ');
     const mnemonicEncoded = await servicePassword.encodeSensitiveText({
       text: mnemonic,
     });
-    await serviceAccount.validateMnemonic(mnemonicEncoded);
-    onConfirm(mnemonicEncoded);
+    const { mnemonicType } = await serviceAccount.validateMnemonic(
+      mnemonicEncoded,
+    );
+    onConfirm({ mnemonic: mnemonicEncoded, mnemonicType });
   }, [form, onConfirm, serviceAccount, servicePassword]);
-
-  // useScrollToInputArea(alertRef);
 
   const {
     suggestions,
@@ -484,7 +485,11 @@ export function PhaseInputArea({
     selectInputIndex,
     closePopover,
     focusNextInput,
-  } = useSuggestion(form, Number(phraseLength));
+    onPasteMnemonic,
+    isShowErrors,
+  } = useSuggestion(form, Number(phraseLength), {
+    setPhraseLength,
+  });
 
   const handleReturnKeyPressed = useCallback(
     (index: number) => {
@@ -497,6 +502,10 @@ export function PhaseInputArea({
     [focusNextInput, handlePageFooterConfirm, phraseLength],
   );
 
+  useKeyboardEvent({
+    keyboardWillHide: closePopover,
+  });
+
   const getReturnKeyLabel: (index: number) => ReturnKeyTypeOptions =
     useCallback(
       (index: number) =>
@@ -508,8 +517,19 @@ export function PhaseInputArea({
     );
 
   const handleClear = useCallback(() => {
-    form.reset();
-  }, [form]);
+    // form.reset(); // not working if all words filled
+    Object.entries(defaultPhrasesMap).forEach(([key, value]) => {
+      form.setValue(key, value);
+    });
+  }, [defaultPhrasesMap, form]);
+
+  const handleChangePhraseLength = useCallback(
+    (value: string) => {
+      setPhraseLength(value);
+      handleClear();
+    },
+    [handleClear],
+  );
 
   return (
     <>
@@ -518,11 +538,13 @@ export function PhaseInputArea({
           <XStack px="$5" pb="$2" pt="$2" justifyContent="space-between">
             {showPhraseLengthSelector ? (
               <Select
-                title="Select a length"
+                title={intl.formatMessage({
+                  id: ETranslations.select_recovery_phrase_length,
+                })}
                 placement="bottom-start"
                 items={phraseLengthOptions}
                 value={phraseLength}
-                onChange={setPhraseLength}
+                onChange={handleChangePhraseLength}
                 renderTrigger={({ value }) => (
                   <Button
                     iconAfter="ChevronDownSmallOutline"
@@ -530,7 +552,12 @@ export function PhaseInputArea({
                     variant="tertiary"
                     testID="phrase-length"
                   >
-                    {value} words
+                    {intl.formatMessage(
+                      { id: ETranslations.count_words },
+                      {
+                        length: value,
+                      },
+                    )}
                   </Button>
                 )}
               />
@@ -543,68 +570,47 @@ export function PhaseInputArea({
                 onPress={handleClear}
                 testID="clear-all"
               >
-                Clear
+                {intl.formatMessage({ id: ETranslations.global_clear })}
               </Button>
             ) : null}
           </XStack>
         ) : null}
 
-        <Form form={form}>
-          <XStack px="$4" flexWrap="wrap">
-            {Array.from({ length: Number(phraseLength) }).map((_, index) => (
-              <Stack
-                key={index}
-                $md={{
-                  flexBasis: '50%',
-                }}
-                flexBasis="33.33%"
-                p="$1"
-              >
-                <Form.Field name={`phrase${index + 1}`}>
-                  <PhaseInput
-                    index={index}
-                    onInputBlur={onInputBlur}
-                    onInputChange={onInputChange}
-                    onInputFocus={onInputFocus}
-                    suggestionsRef={suggestionsRef}
-                    updateInputValue={updateInputValue}
-                    openStatusRef={openStatusRef}
-                    selectInputIndex={selectInputIndex}
-                    closePopover={closePopover}
-                    onReturnKeyPressed={handleReturnKeyPressed}
-                    getReturnKeyLabel={getReturnKeyLabel}
-                    testID={`phrase-input-index${index}`}
-                  />
-                </Form.Field>
-              </Stack>
-            ))}
-          </XStack>
-        </Form>
-
-        {isShowCopyPasteButton ? (
-          <XStack px="$5" py="$2">
-            <Button
-              size="small"
-              variant="tertiary"
-              onPress={async () => {
-                const mnemonic = await getClipboard();
-                try {
-                  const phrasesArr: string[] = (mnemonic || '').split(' ');
-                  form.reset(
-                    phrasesArr.reduce((prev, next, index) => {
-                      prev[`phrase${index + 1}`] = next;
-                      return prev;
-                    }, {} as Record<`phrase${number}`, string>),
-                  );
-                } catch (error) {
-                  console.error(error);
-                }
-              }}
-            >
-              Paste All(Only in Dev)
-            </Button>
-          </XStack>
-        ) : null}
+        <SecureView>
+          <Form form={form}>
+            <XStack px="$4" flexWrap="wrap">
+              {Array.from({ length: Number(phraseLength) }).map((_, index) => (
+                <Stack
+                  key={index}
+                  $md={{
+                    flexBasis: '50%',
+                  }}
+                  flexBasis="33.33%"
+                  p="$1"
+                >
+                  <Form.Field name={`phrase${index + 1}`}>
+                    <PhaseInput
+                      index={index}
+                      isShowError={isShowErrors[index]}
+                      onInputBlur={onInputBlur}
+                      onInputChange={onInputChange}
+                      onInputFocus={onInputFocus}
+                      onPasteMnemonic={onPasteMnemonic}
+                      suggestionsRef={suggestionsRef}
+                      updateInputValue={updateInputValue}
+                      openStatusRef={openStatusRef}
+                      selectInputIndex={selectInputIndex}
+                      closePopover={closePopover}
+                      onReturnKeyPressed={handleReturnKeyPressed}
+                      getReturnKeyLabel={getReturnKeyLabel}
+                      testID={`phrase-input-index${index}`}
+                    />
+                  </Form.Field>
+                </Stack>
+              ))}
+            </XStack>
+          </Form>
+        </SecureView>
 
         <HeightTransition>
           {invalidWordsLength > 0 ? (
@@ -619,12 +625,14 @@ export function PhaseInputArea({
             <XStack pt="$1.5" px="$5" key="invalidPhrase">
               <Icon name="XCircleOutline" size="$5" color="$iconCritical" />
               <SizableText size="$bodyMd" color="$textCritical" pl="$2">
-                Invalid recovery phrase
+                {intl.formatMessage({
+                  id: ETranslations.feedback_invalid_phrases,
+                })}
               </SizableText>
             </XStack>
           ) : null}
         </HeightTransition>
-        <Tutorials px="$5" list={tutorials} />
+        {FooterComponent}
       </Page.Body>
       <PageFooter
         suggestions={suggestions}

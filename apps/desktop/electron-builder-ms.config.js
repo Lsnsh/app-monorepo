@@ -1,3 +1,5 @@
+const DLLs = require('./electron-dll.config');
+
 /* eslint-disable no-template-curly-in-string */
 require('../../development/env');
 
@@ -40,12 +42,10 @@ module.exports = {
     'repo': 'app-monorepo',
     'owner': 'OneKeyHQ',
   },
-  'dmg': {
-    'sign': false,
-  },
   'nsis': {
     'oneClick': false,
     'installerSidebar': 'build/static/images/icons/installerSidebar.bmp',
+    'deleteAppDataOnUninstall': true,
   },
   'win': {
     'extraResources': [
@@ -54,10 +54,11 @@ module.exports = {
         'to': 'bin/bridge',
       },
     ],
+    'extraFiles': [...DLLs],
     'icon': 'build/static/images/icons/512x512.png',
     'artifactName': 'OneKey-Wallet-${version}-win-store-${arch}.${ext}',
     'verifyUpdateCodeSignature': false,
-    'target': ['nsis'],
+    'target': [{ target: 'nsis', arch: ['x64', 'arm64'] }],
   },
   'afterSign': 'scripts/notarize.js',
 };

@@ -1,4 +1,6 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+
+import { useIntl } from 'react-intl';
 
 import {
   Icon,
@@ -18,7 +20,11 @@ import type {
 } from '@onekeyhq/components';
 import { getSharedInputStyles } from '@onekeyhq/components/src/forms/Input/sharedStyles';
 import type { IFormFieldProps } from '@onekeyhq/components/src/forms/types';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import type { NUMBER_FORMATTER } from '@onekeyhq/shared/src/utils/numberUtils';
+
+import { LetterAvatar } from '../LetterAvatar';
 
 type IAmountInputFormItemProps = IFormFieldProps<
   string,
@@ -29,21 +35,31 @@ type IAmountInputFormItemProps = IFormFieldProps<
     enableMaxAmount?: boolean;
     valueProps?: {
       value?: string;
+      color?: string;
       onPress?: () => void;
       loading?: boolean;
       currency?: string;
+      tokenSymbol?: string;
+      formatter?: keyof typeof NUMBER_FORMATTER;
       moreComponent?: React.ReactNode;
     };
     balanceProps?: {
       value?: string;
       onPress?: () => void;
       loading?: boolean;
+      iconText?: string;
+    };
+    balanceHelperProps?: {
+      onPress?: () => void;
     };
     tokenSelectorTriggerProps?: {
       selectedTokenImageUri?: string;
       selectedNetworkImageUri?: string;
       selectedTokenSymbol?: string;
+      selectedNetworkName?: string;
+      isCustomNetwork?: boolean;
       loading?: boolean;
+      disabled?: boolean;
     } & IXStackProps;
     reversible?: boolean;
   } & IStackProps
@@ -60,11 +76,25 @@ export function AmountInput({
   hasError,
   valueProps,
   balanceProps,
+  balanceHelperProps,
   ...rest
 }: IAmountInputFormItemProps) {
+  const intl = useIntl();
+
   const sharedStyles = getSharedInputStyles({
     error: hasError,
   });
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+
+  const handleChangeText = useCallback(
+    (text: string) => {
+      // Keep compatibility with Chinese keyboard input
+      // Replace the Chinese full-width period with the standard period
+      const sanitizedText = text.replace('。', '.');
+      onChange?.(sanitizedText);
+    },
+    [onChange],
+  );
 
   const InputElement = useMemo(() => {
     if (inputProps?.loading)
@@ -76,22 +106,34 @@ export function AmountInput({
 
     return (
       <Input
-        keyboardType={platformEnv.isNativeIOS ? 'numeric' : 'number-pad'}
+        keyboardType="decimal-pad"
         height="$14"
         fontSize={getFontSize('$heading3xl')}
         fontWeight="600"
         size="large"
-        focusStyle={undefined}
+        focusVisibleStyle={undefined}
         containerProps={{
           flex: 1,
           borderWidth: 0,
         }}
         value={value}
-        onChangeText={onChange}
+        onChangeText={platformEnv.isNative ? onChange : handleChangeText}
+        // maybe should replace with ref.current.setNativeProps({ selection })
+        {...(platformEnv.isNativeAndroid && {
+          selection,
+          onSelectionChange: ({ nativeEvent }) =>
+            setSelection(nativeEvent.selection),
+          onFocus: () =>
+            setSelection({
+              start: value?.length ?? 0,
+              end: value?.length ?? 0,
+            }),
+          onBlur: () => setSelection({ start: 0, end: 0 }),
+        })}
         {...inputProps}
       />
     );
-  }, [inputProps, onChange, value]);
+  }, [inputProps, value, onChange, handleChangeText, selection]);
 
   const AmountElement = useMemo(() => {
     if (!valueProps) {
@@ -108,10 +150,13 @@ export function AmountInput({
     return (
       <>
         <NumberSizeableText
-          formatter="value"
-          formatterOptions={{ currency: valueProps.currency ?? '$' }}
+          formatter={valueProps.formatter ?? 'value'}
+          formatterOptions={{
+            currency: valueProps.currency,
+            tokenSymbol: valueProps.tokenSymbol,
+          }}
           size="$bodyMd"
-          color="$textSubdued"
+          color={valueProps.color ?? '$textSubdued'}
           pr="$0.5"
         >
           {valueProps.value || '0.00'}
@@ -153,41 +198,75 @@ export function AmountInput({
             bg: '$bgActive',
           },
         })}
+        disabled={tokenSelectorTriggerProps?.disabled}
         onPress={tokenSelectorTriggerProps?.onPress}
       >
-        <Stack>
+        <Stack mr="$2">
           <Image height="$7" width="$7" borderRadius="$full">
-            {tokenSelectorTriggerProps?.selectedTokenImageUri ? (
-              <Image.Source
-                source={{
-                  uri: tokenSelectorTriggerProps?.selectedTokenImageUri,
-                }}
-              />
-            ) : null}
+            <Image.Source
+              source={{
+                uri: tokenSelectorTriggerProps?.selectedTokenImageUri,
+              }}
+            />
+            <Image.Fallback
+              alignItems="center"
+              justifyContent="center"
+              bg="$gray5"
+              delayMs={1000}
+            >
+              <Icon size="$6" name="CryptoCoinOutline" color="$iconSubdued" />
+            </Image.Fallback>
           </Image>
-          <Stack
-            position="absolute"
-            right="$-1"
-            bottom="$-1"
-            p="$0.5"
-            borderRadius="$full"
-            bg="$bgApp"
-          >
-            {tokenSelectorTriggerProps?.selectedNetworkImageUri ? (
+          {tokenSelectorTriggerProps?.selectedNetworkImageUri ? (
+            <Stack
+              position="absolute"
+              right="$-1"
+              bottom="$-1"
+              p="$0.5"
+              borderRadius="$full"
+              flexShrink={1}
+              bg="$bgApp"
+            >
               <Image height="$3" width="$3" borderRadius="$full">
                 <Image.Source
                   source={{
                     uri: tokenSelectorTriggerProps?.selectedNetworkImageUri,
                   }}
                 />
+                <Image.Fallback bg="$gray5" delayMs={1000}>
+                  <Icon
+                    size="$3"
+                    name="QuestionmarkSolid"
+                    color="$iconSubdued"
+                  />
+                </Image.Fallback>
               </Image>
-            ) : null}
-          </Stack>
+            </Stack>
+          ) : null}
+          {tokenSelectorTriggerProps?.isCustomNetwork &&
+          tokenSelectorTriggerProps?.selectedNetworkName ? (
+            <Stack
+              position="absolute"
+              right="$-1"
+              bottom="$-1"
+              p="$0.5"
+              borderRadius="$full"
+              flexShrink={1}
+              bg="$bgApp"
+            >
+              <LetterAvatar
+                size="$3"
+                letter={tokenSelectorTriggerProps.selectedNetworkName[0]}
+              />
+            </Stack>
+          ) : null}
         </Stack>
-        <SizableText size="$headingXl" pl="$2" numberOfLines={1}>
-          {tokenSelectorTriggerProps?.selectedTokenSymbol || 'Select Token'}
+        <SizableText size="$headingXl" numberOfLines={1} flexShrink={1}>
+          {tokenSelectorTriggerProps?.selectedTokenSymbol ||
+            intl.formatMessage({ id: ETranslations.token_selector_title })}
         </SizableText>
-        {tokenSelectorTriggerProps?.onPress ? (
+        {tokenSelectorTriggerProps?.onPress &&
+        !tokenSelectorTriggerProps.disabled ? (
           <Icon
             flexShrink={0}
             name="ChevronDownSmallOutline"
@@ -199,9 +278,13 @@ export function AmountInput({
       </XStack>
     );
   }, [
+    intl,
+    tokenSelectorTriggerProps?.disabled,
+    tokenSelectorTriggerProps?.isCustomNetwork,
     tokenSelectorTriggerProps?.loading,
     tokenSelectorTriggerProps?.onPress,
     tokenSelectorTriggerProps?.selectedNetworkImageUri,
+    tokenSelectorTriggerProps?.selectedNetworkName,
     tokenSelectorTriggerProps?.selectedTokenImageUri,
     tokenSelectorTriggerProps?.selectedTokenSymbol,
   ]);
@@ -210,17 +293,71 @@ export function AmountInput({
     if (!balanceProps) {
       return null;
     }
-    return balanceProps.loading ? (
-      <Stack py="$1" px="$3.5">
-        <Skeleton h="$3" w="$16" />
-      </Stack>
-    ) : (
-      <XStack
-        px="$3.5"
+    if (balanceProps.loading) {
+      return (
+        <Stack py="$1" px="$3.5">
+          <Skeleton h="$3" w="$16" />
+        </Stack>
+      );
+    }
+    if (balanceProps.value) {
+      return (
+        <XStack
+          alignItems="center"
+          px="$3.5"
+          pb="$2"
+          onPress={balanceProps.onPress}
+          {...(enableMaxAmount && {
+            userSelect: 'none',
+            hoverStyle: {
+              bg: '$bgHover',
+            },
+            pressStyle: {
+              bg: '$bgActive',
+            },
+          })}
+          {...(balanceHelperProps && {
+            pr: '$0',
+          })}
+        >
+          {balanceProps.iconText ? (
+            <SizableText color="$textSubdued" size="$bodyMd" mr="$1">
+              {balanceProps.iconText}
+            </SizableText>
+          ) : (
+            <Icon name="WalletOutline" size="$5" color="$iconSubdued" mr="$1" />
+          )}
+          <SizableText size="$bodyMd" color="$textSubdued">
+            <NumberSizeableText
+              size="$bodyMd"
+              color="$textSubdued"
+              formatter="balance"
+            >
+              {balanceProps.value ?? 0}
+            </NumberSizeableText>
+          </SizableText>
+          {enableMaxAmount ? (
+            <SizableText pl="$1" size="$bodyMdMedium" color="$textInteractive">
+              {intl.formatMessage({ id: ETranslations.send_max })}
+            </SizableText>
+          ) : null}
+        </XStack>
+      );
+    }
+    return null;
+  }, [balanceHelperProps, balanceProps, enableMaxAmount, intl]);
+
+  const balanceHelper = useMemo(() => {
+    if (!balanceHelperProps) {
+      return null;
+    }
+
+    return (
+      <Stack
+        pl="$2"
+        pr="$3"
         pb="$2"
-        onPress={balanceProps.onPress}
-        {...(enableMaxAmount && {
-          userSelect: 'none',
+        {...(balanceHelperProps?.onPress && {
           hoverStyle: {
             bg: '$bgHover',
           },
@@ -228,25 +365,13 @@ export function AmountInput({
             bg: '$bgActive',
           },
         })}
+        onPress={balanceHelperProps?.onPress}
       >
-        <SizableText size="$bodyMd" color="$textSubdued">
-          {`Balance: `}
-          <NumberSizeableText
-            size="$bodyMd"
-            color="$textSubdued"
-            formatter="balance"
-          >
-            {balanceProps.value}
-          </NumberSizeableText>
-        </SizableText>
-        {enableMaxAmount ? (
-          <SizableText pl="$1" size="$bodyMdMedium" color="$textInteractive">
-            Max
-          </SizableText>
-        ) : null}
-      </XStack>
+        <Icon name="InfoCircleOutline" color="$iconSubdued" size="$5" />
+      </Stack>
     );
-  }, [balanceProps, enableMaxAmount]);
+  }, [balanceHelperProps]);
+
   return (
     <Stack
       borderRadius="$3"
@@ -266,6 +391,8 @@ export function AmountInput({
           alignItems="center"
           px="$3.5"
           pb="$2"
+          flex={1}
+          disabled={balanceProps?.loading}
           onPress={valueProps?.onPress}
           {...(reversible && {
             userSelect: 'none',
@@ -279,7 +406,10 @@ export function AmountInput({
         >
           {AmountElement}
         </XStack>
-        {BalanceElement}
+        <XStack alignItems="center">
+          {BalanceElement}
+          {balanceHelper}
+        </XStack>
       </XStack>
     </Stack>
   );

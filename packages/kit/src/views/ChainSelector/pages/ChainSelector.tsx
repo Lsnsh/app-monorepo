@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useIntl } from 'react-intl';
 
 import type { IPageScreenProps } from '@onekeyhq/components';
-import { Button, Page } from '@onekeyhq/components';
+import { usePromiseResult } from '@onekeyhq/kit/src/hooks/usePromiseResult';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type {
   EChainSelectorPages,
   IChainSelectorParamList,
@@ -9,120 +10,61 @@ import type {
 import type { IServerNetwork } from '@onekeyhq/shared/types';
 
 import backgroundApiProxy from '../../../background/instance/backgroundApiProxy';
-import { AccountSelectorProviderMirror } from '../../../components/AccountSelector';
-import { useAccountSelectorAvailableNetworks } from '../../../components/AccountSelector/hooks/useAccountSelectorAvailableNetworks';
-import useAppNavigation from '../../../hooks/useAppNavigation';
-import { usePromiseResult } from '../../../hooks/usePromiseResult';
-import {
-  useAccountSelectorActions,
-  useActiveAccount,
-} from '../../../states/jotai/contexts/accountSelector';
-import { ListNetworkView } from '../components/ListNetworkView';
-
-function getHeaderRightComponent(
-  isEditMode: boolean,
-  handleEditButtonPress: () => void,
-) {
-  return (
-    <Button variant="tertiary" onPress={handleEditButtonPress}>
-      {isEditMode ? 'Done' : 'Edit'}
-    </Button>
-  );
-}
-
-function ChainSelector({ num }: { num: number }) {
-  const {
-    activeAccount: { network },
-  } = useActiveAccount({ num });
-  const actions = useAccountSelectorActions();
-  const navigation = useAppNavigation();
-  const selectedChain = network?.id;
-  const [isEditMode, setIsEditMode] = useState(false);
-  const { serviceNetwork } = backgroundApiProxy;
-
-  const { networkIds } = useAccountSelectorAvailableNetworks({ num });
-
-  const {
-    result: { networks },
-  } = usePromiseResult(
-    () =>
-      serviceNetwork.getNetworksByIds({
-        networkIds: networkIds || [],
-      }),
-    [networkIds, serviceNetwork],
-    {
-      initResult: {
-        networks: [],
-      },
-    },
-  );
-
-  const handleListItemPress = (networkId: string) => {
-    void actions.current.updateSelectedAccountNetwork({
-      num,
-      networkId,
-    });
-    navigation.popStack();
-  };
-
-  const handleEditButtonPress = () => {
-    setIsEditMode(!isEditMode);
-  };
-
-  const [topNetworks, setTopNetworks] = useState<IServerNetwork[]>([]);
-  const [searchText, setSearchText] = useState('');
-
-  useEffect(() => {
-    if (networks.length) {
-      setTopNetworks(networks.slice(0, 4));
-    }
-  }, [networks]);
-
-  return (
-    <Page>
-      <Page.Header
-        title="Networks"
-        headerRight={() =>
-          getHeaderRightComponent(isEditMode, handleEditButtonPress)
-        }
-        headerSearchBarOptions={{
-          placeholder: 'Search',
-          onChangeText: (e) => setSearchText(e.nativeEvent.text),
-        }}
-      />
-      <Page.Body>
-        <ListNetworkView
-          searchText={searchText.trim()}
-          isEditMode={isEditMode}
-          topNetworks={topNetworks}
-          allNetworks={networks}
-          selectNetworkId={selectedChain}
-          onChangeTopNetworks={(items) => {
-            setTopNetworks(items);
-          }}
-          onPressItem={(item) => handleListItemPress(item.id)}
-        />
-      </Page.Body>
-    </Page>
-  );
-}
+import { PureChainSelector } from '../components/PureChainSelector';
 
 export default function ChainSelectorPage({
   route,
+  navigation,
 }: IPageScreenProps<
   IChainSelectorParamList,
   EChainSelectorPages.ChainSelector
 >) {
-  const { num, sceneName, sceneUrl } = route.params;
+  const intl = useIntl();
+  const {
+    onSelect,
+    defaultNetworkId,
+    networkIds,
+    disableNetworkIds,
+    grouped,
+    title = intl.formatMessage({ id: ETranslations.global_networks }),
+  } = route.params ?? {};
+  const { result } = usePromiseResult(async () => {
+    const resp = await backgroundApiProxy.serviceNetwork.getAllNetworks({
+      excludeAllNetworkItem: true,
+    });
+    let networks: IServerNetwork[] = resp.networks;
+    let disableNetwork: IServerNetwork[] | undefined;
+    if (disableNetworkIds && disableNetworkIds.length > 0) {
+      disableNetwork = networks.filter((o) => disableNetworkIds.includes(o.id));
+    }
+    if (networkIds && networkIds.length > 0) {
+      const networkIdIndex = networkIds.reduce((acc, item, index) => {
+        acc[item] = index;
+        return acc;
+      }, {} as Record<string, number>);
+      networks = networks.filter((o) => {
+        let isOK = networkIds.includes(o.id);
+        if (disableNetworkIds && disableNetworkIds?.length > 0) {
+          isOK = isOK && !disableNetworkIds.includes(o.id);
+        }
+        return isOK;
+      });
+      networks.sort((a, b) => networkIdIndex[a.id] - networkIdIndex[b.id]);
+    }
+    return { networks, disableNetwork };
+  }, [networkIds, disableNetworkIds]);
+
   return (
-    <AccountSelectorProviderMirror
-      enabledNum={[num]}
-      config={{
-        sceneName,
-        sceneUrl,
+    <PureChainSelector
+      title={title}
+      networkId={defaultNetworkId}
+      networks={result?.networks ?? []}
+      unavailable={result?.disableNetwork}
+      grouped={grouped}
+      onPressItem={(network) => {
+        onSelect?.(network);
+        navigation.goBack();
       }}
-    >
-      <ChainSelector num={num} />
-    </AccountSelectorProviderMirror>
+    />
   );
 }

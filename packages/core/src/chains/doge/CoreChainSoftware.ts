@@ -17,10 +17,22 @@ import type {
 import type { IBtcForkNetwork } from '../btc/types';
 
 export default class CoreChainSoftware extends CoreChainSoftwareBtc {
+  override async getCoinName() {
+    return Promise.resolve('DOGE');
+  }
+
+  override async getXpubRegex() {
+    return '^[d]gub';
+  }
+
+  override async getXprvtRegex() {
+    return '^[d]gpv';
+  }
+
   override getPsbt({ network }: { network: IBtcForkNetwork }): Psbt {
     return new Psbt({
       network,
-      maximumFeeRate: 1000000,
+      maximumFeeRate: network.maximumFeeRate,
     });
   }
 

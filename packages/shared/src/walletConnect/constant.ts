@@ -1,15 +1,17 @@
+/* eslint-disable spellcheck/spell-checker */
+import { uniq } from 'lodash';
 import { Platform } from 'react-native';
 
+import { ONEKEY_LOGO_ICON_URL } from '../consts';
 import {
   ONEKEY_APP_DEEP_LINK,
   WalletConnectUniversalLinkFull,
 } from '../consts/deeplinkConsts';
 import {
-  IMPL_COSMOS,
-  IMPL_DOT,
+  IMPL_ALGO,
+  // IMPL_COSMOS,
+  // IMPL_DOT,
   IMPL_EVM,
-  IMPL_SOL,
-  IMPL_TRON,
 } from '../engine/engineConsts';
 import platformEnv from '../platformEnv';
 
@@ -19,7 +21,7 @@ import type {
   IWalletConnectLoggerLevel,
 } from './types';
 
-export const DAPP_SIDE_SINGLE_WALLET_MODE = false;
+export const DAPP_SIDE_SINGLE_WALLET_MODE = true;
 
 export const WALLET_CONNECT_V2_PROJECT_ID = '5e21f5018bfdeb78af03187a432a301d';
 // checkIsDefined(process.env.WALLETCONNECT_PROJECT_ID); // not working
@@ -27,11 +29,11 @@ export const WALLET_CONNECT_V2_PROJECT_ID = '5e21f5018bfdeb78af03187a432a301d';
 export const WALLET_CONNECT_RELAY_URL = 'wss://relay.walletconnect.com';
 export const WALLET_CONNECT_LOGGER_LEVEL: IWalletConnectLoggerLevel = 'error';
 
-const platformName = [
+const platformName = uniq([
   process.env.ONEKEY_PLATFORM ?? '',
   process.env.EXT_CHANNEL ?? '',
   Platform.OS ?? '',
-]
+])
   .filter(Boolean)
   .join('-');
 
@@ -55,70 +57,87 @@ function getPlatformShortName() {
   return 'Wallet';
 }
 
+export const WALLET_CONNECT_CLIENT_NAME = `OneKey ${getPlatformShortName()}`;
+export const WALLET_CONNECT_CLIENT_DESC = 'Connect with OneKey';
 export const WALLET_CONNECT_CLIENT_META = {
-  name: `OneKey ${getPlatformShortName()}`,
-  description: 'Connect with OneKey',
+  name: WALLET_CONNECT_CLIENT_NAME,
+  description: WALLET_CONNECT_CLIENT_DESC,
   // wallet-connect identify different dApps by url
-  url: `https://${platformName}.onekey.so`,
-  icons: [
-    'https://web.onekey-asset.com/portal/b688e1435d0d1e2e92581eb8dd7442c88da36049/icons/icon-256x256.png',
-    'https://www.onekey.so/favicon.ico',
-  ],
+  url: platformEnv.isWeb
+    ? `https://1key.so`
+    : `https://${platformName}.1key.so`,
+  icons: [ONEKEY_LOGO_ICON_URL],
   // https://explorer-api.walletconnect.com/v3/all?projectId=2f05ae7f1116030fde2d36508f472bfb&entries=40&page=1&search=onekey&build=1710747625972
   redirect: platformEnv.isNative
     ? {
         native: ONEKEY_APP_DEEP_LINK, // 'onekey-wallet://',
-        universal: WalletConnectUniversalLinkFull, // 'https://app.onekey.so/wc/connect',
+        universal: WalletConnectUniversalLinkFull, // 'https://1key.so/wc/connect',
       }
     : (undefined as any),
 };
 
 export const namespaceToImplsMap: Record<INamespaceUnion, string> = {
   eip155: IMPL_EVM,
-  solana: IMPL_SOL,
-  cosmos: IMPL_COSMOS,
-  polkadot: IMPL_DOT,
-  tron: IMPL_TRON,
+  // solana: IMPL_SOL,
+  // cosmos: IMPL_COSMOS,
+  // polkadot: IMPL_DOT,
+  // tron: IMPL_TRON,
+  algorand: IMPL_ALGO,
 };
 
 export const implToNamespaceMap: {
   [impl: string]: INamespaceUnion;
 } = {
   [IMPL_EVM]: 'eip155',
-  [IMPL_SOL]: 'solana',
-  [IMPL_COSMOS]: 'cosmos',
-  [IMPL_DOT]: 'polkadot',
-  [IMPL_TRON]: 'tron',
+  // [IMPL_SOL]: 'solana',
+  // [IMPL_COSMOS]: 'cosmos',
+  // [IMPL_DOT]: 'polkadot',
+  // [IMPL_TRON]: 'tron',
+  [IMPL_ALGO]: 'algorand',
 };
 
 // https://chainagnostic.org/
 export const caipsToNetworkMap: Record<string, ICaipsInfo[]> = {
-  solana: [
+  // solana: [
+  //   {
+  //     caipsChainId: '4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZ',
+  //     networkId: 'sol--101',
+  //     impl: IMPL_SOL,
+  //     namespace: 'solana',
+  //   },
+  //   {
+  //     caipsChainId: '8E9rvCKLFQia2Y35HXjjpWzj8weVo44K',
+  //     networkId: 'sol--103',
+  //     impl: IMPL_SOL,
+  //     namespace: 'solana',
+  //   },
+  // ],
+  // polkadot: [
+  //   {
+  //     caipsChainId: '91b171bb158e2d3848fa23a9f1c25182',
+  //     networkId: 'dot--polkadot',
+  //     impl: IMPL_DOT,
+  //     namespace: 'polkadot',
+  //   },
+  //   {
+  //     caipsChainId: 'b0a8d493285c2df73290dfb7e61f870f',
+  //     networkId: 'dot--kusama',
+  //     impl: IMPL_DOT,
+  //     namespace: 'polkadot',
+  //   },
+  // ],
+  algorand: [
     {
-      caipsChainId: '4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZ',
-      networkId: 'sol--101',
-      impl: IMPL_SOL,
-      namespace: 'solana',
+      caipsChainId: 'wGHE2Pwdvd7S12BL5FaOP20EGYesN73k',
+      networkId: 'algo--4160',
+      impl: IMPL_ALGO,
+      namespace: 'algorand',
     },
     {
-      caipsChainId: '8E9rvCKLFQia2Y35HXjjpWzj8weVo44K',
-      networkId: 'sol--103',
-      impl: IMPL_SOL,
-      namespace: 'solana',
-    },
-  ],
-  polkadot: [
-    {
-      caipsChainId: '91b171bb158e2d3848fa23a9f1c25182',
-      networkId: 'dot--polkadot',
-      impl: IMPL_DOT,
-      namespace: 'polkadot',
-    },
-    {
-      caipsChainId: 'b0a8d493285c2df73290dfb7e61f870f',
-      networkId: 'dot--kusama',
-      impl: IMPL_DOT,
-      namespace: 'polkadot',
+      caipsChainId: 'SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe',
+      networkId: 'algo--4160',
+      impl: IMPL_ALGO,
+      namespace: 'algorand',
     },
   ],
 };
@@ -166,20 +185,30 @@ export const COSMOS_SIGNING_METHODS = {
   COSMOS_SIGN_AMINO: 'cosmos_signAmino',
 };
 
+/**
+ * algo
+ */
+
+export const ALGO_SIGNING_METHODS = {
+  ALGO_SIGN_TXN: 'algo_signTxn',
+};
+
 export const supportMethodsMap: Record<INamespaceUnion, string[]> = {
   eip155: Object.values(EIP155_SIGNING_METHODS),
-  solana: [],
-  cosmos: Object.values(COSMOS_SIGNING_METHODS),
-  polkadot: [],
-  tron: [],
+  // solana: [],
+  // cosmos: Object.values(COSMOS_SIGNING_METHODS),
+  // polkadot: [],
+  // tron: [],
+  algorand: Object.values(ALGO_SIGNING_METHODS),
 };
 
 export const supportEventsMap: Record<INamespaceUnion, string[]> = {
   eip155: ['accountsChanged', 'chainChanged'],
-  solana: [],
-  cosmos: [],
-  polkadot: [],
-  tron: [],
+  // solana: [],
+  // cosmos: [],
+  // polkadot: [],
+  // tron: [],
+  algorand: ['accountsChanged', 'chainChanged'],
 };
 
 export const WalletConnectAccountSelectorNumStartAt = 1000;

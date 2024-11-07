@@ -18,12 +18,19 @@ export const captureViewRefs: Record<string, IElement> = {};
 
 if (process.env.NODE_ENV !== 'production') {
   // @ts-ignore
-  global.$$webviewRefs = webviewRefs;
+  globalThis.$$webviewRefs = webviewRefs;
 }
 
 export function getWebviewWrapperRef(id?: string) {
   const ref = id ? webviewRefs[id] : null;
   return ref ?? null;
+}
+
+export function formatHiddenHttpsUrl(url?: string) {
+  return {
+    isHttpsUrl: url && /^https/i.test(url),
+    hiddenHttpsUrl: url?.replace?.(/^https:\/\//i, ''),
+  };
 }
 
 export function crossWebviewLoadUrl({
@@ -37,9 +44,11 @@ export function crossWebviewLoadUrl({
   // debugLogger.webview.info('crossWebviewLoadUrl >>>>', url);
   console.log('crossWebviewLoadUrl >>>>', url);
   if (platformEnv.isDesktop) {
-    // @ts-ignore
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    (wrapperRef?.innerRef as IElectronWebView)?.loadURL(url).catch();
+    setTimeout(() => {
+      // @ts-ignore
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+      (wrapperRef?.innerRef as IElectronWebView)?.loadURL(url).catch();
+    });
   } else if (platformEnv.isRuntimeBrowser) {
     // @ts-ignore
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call

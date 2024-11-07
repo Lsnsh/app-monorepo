@@ -13,6 +13,7 @@ import {
   Skeleton,
   Toast,
   XStack,
+  useMedia,
 } from '@onekeyhq/components';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
@@ -22,8 +23,12 @@ import {
   useBrowserAction,
   useBrowserHistoryAction,
 } from '@onekeyhq/kit/src/states/jotai/contexts/discovery';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
+import { EEnterMethod } from '@onekeyhq/shared/src/logger/scopes/discovery/scenes/dapp';
 import { formatRelativeDate } from '@onekeyhq/shared/src/utils/dateUtils';
 
+import { DiscoveryIcon } from '../../components/DiscoveryIcon';
 import { withBrowserProvider } from '../Browser/WithBrowserProvider';
 
 import type { IBrowserHistory } from '../../types';
@@ -52,6 +57,7 @@ function HistoryListModal() {
   const { removeBrowserHistory, removeAllBrowserHistory } =
     useBrowserHistoryAction().current;
 
+  const { gtMd } = useMedia();
   const { handleOpenWebSite } = useBrowserAction().current;
 
   const [page, setPage] = useState(1);
@@ -93,17 +99,21 @@ function HistoryListModal() {
             <IconButton
               variant="tertiary"
               icon="BroomOutline"
-              title="Clear All"
+              title={intl.formatMessage({
+                id: ETranslations.explore_remove_all,
+              })}
               onPress={() => {
                 Dialog.show({
-                  title: 'Clear All History?',
-                  description:
-                    'Are you sure you want to delete all your browsing history? This action cannot be undone.',
+                  title: intl.formatMessage({
+                    id: ETranslations.explore_clear_history_prompt,
+                  }),
+                  description: intl.formatMessage({
+                    id: ETranslations.explore_clear_history_message,
+                  }),
                   onConfirm: () => handleDeleteAll(),
-                  confirmButtonProps: {
-                    variant: 'secondary',
-                  },
-                  onConfirmText: 'Clear All',
+                  onConfirmText: intl.formatMessage({
+                    id: ETranslations.explore_remove_all,
+                  }),
                 });
               }}
             />
@@ -115,38 +125,41 @@ function HistoryListModal() {
           size="medium"
           onPress={() => setIsEditing((prev) => !prev)}
         >
-          {isEditing ? 'Done' : 'Edit'}
+          {isEditing
+            ? intl.formatMessage({ id: ETranslations.global_done })
+            : intl.formatMessage({ id: ETranslations.global_edit })}
         </Button>
       </XStack>
     ),
-    [handleDeleteAll, isEditing],
+    [handleDeleteAll, isEditing, intl],
+  );
+
+  const keyExtractor = useCallback(
+    (item: unknown) => (item as IBrowserHistory).id,
+    [],
   );
 
   return (
     <Page scrollEnabled>
       <Page.Header
-        title={intl.formatMessage({ id: 'transaction__history' })}
+        title={intl.formatMessage({ id: ETranslations.explore_history })}
         headerRight={headerRight}
       />
       <Page.Body>
         <SectionList
           testID="History-SectionList"
           height="100%"
-          estimatedItemSize="$10"
+          estimatedItemSize="$16"
           extraData={isEditing}
           sections={isNil(dataSource) ? [] : dataSource}
           renderSectionHeader={({ section: { title } }) => (
             <SectionList.SectionHeader title={title} />
           )}
+          keyExtractor={keyExtractor}
           renderItem={({ item }: { item: IBrowserHistory }) => (
             <ListItem
               key={item.id}
-              avatarProps={{
-                src: item.logo,
-                fallbackProps: {
-                  children: <Skeleton w="$10" h="$10" />,
-                },
-              }}
+              renderAvatar={<DiscoveryIcon uri={item.logo} size="$10" />}
               title={item.title}
               titleProps={{
                 numberOfLines: 1,
@@ -159,11 +172,18 @@ function HistoryListModal() {
               {...(!isEditing && {
                 onPress: () => {
                   handleOpenWebSite({
+                    switchToMultiTabBrowser: gtMd,
                     navigation,
                     webSite: {
                       url: item.url,
                       title: item.title,
                     },
+                  });
+
+                  defaultLogger.discovery.dapp.enterDapp({
+                    dappDomain: item.url,
+                    dappName: item.title,
+                    enterMethod: EEnterMethod.history,
                   });
                 },
               })}
@@ -178,7 +198,9 @@ function HistoryListModal() {
                       void run();
                     }, 200);
                     Toast.success({
-                      title: 'Remove Success',
+                      title: intl.formatMessage({
+                        id: ETranslations.explore_removed_success,
+                      }),
                     });
                   }}
                 />

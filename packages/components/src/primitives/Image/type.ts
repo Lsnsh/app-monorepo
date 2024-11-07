@@ -1,13 +1,7 @@
 import type { PropsWithChildren } from 'react';
 
-import type { StackStyleProps } from '@tamagui/web/types/types';
-import type {
-  Image,
-  ImageProps,
-  ImageSourcePropType,
-  ImageURISource,
-} from 'react-native';
-import type { FastImageStaticProperties } from 'react-native-fast-image';
+import type { StackStyle } from '@tamagui/web/types/types';
+import type { Image, ImageProps, ImageSourcePropType } from 'react-native';
 
 export type IImageContext = {
   loading?: boolean;
@@ -17,14 +11,16 @@ export type IImageContext = {
 };
 
 export type IImageFallbackProps = PropsWithChildren<
-  StackStyleProps & {
+  StackStyle & {
     /** Milliseconds to wait before showing the fallback, to prevent flicker */
     delayMs?: number;
   }
 >;
 
-export type IImageSkeletonProps = Omit<IImageFallbackProps, 'children'>;
+export type IImageLoadingProps = IImageFallbackProps;
 
+export type IImageSkeletonProps = Omit<IImageFallbackProps, 'children'>;
+export type IImageSourcePropType = ImageProps['source'];
 export type IImageSourceProps = Omit<
   ImageProps,
   'width' | 'height' | 'source' | 'borderRadius' | 'size'
@@ -32,9 +28,9 @@ export type IImageSourceProps = Omit<
   circular?: boolean;
   delayMs?: number;
   src?: string;
-  source?: ImageProps['source'];
-  size?: StackStyleProps['width'];
-} & StackStyleProps;
+  source?: IImageSourcePropType;
+  size?: StackStyle['width'];
+} & StackStyle;
 export type IImageProps = PropsWithChildren<IImageSourceProps>;
 
 export type IUseSource = (
@@ -44,6 +40,8 @@ export type IUseSource = (
 
 export type IUseImageComponent = (
   imageSource?: ImageSourcePropType,
-) => typeof Image | null;
+) => typeof Image;
 
-export type IPreloadFunc = FastImageStaticProperties['preload'];
+export type IPreloadImagesFunc = (sources: { uri?: string }[]) => Promise<void>;
+
+export type IPreloadImageFunc = (source: { uri?: string }) => Promise<void>;

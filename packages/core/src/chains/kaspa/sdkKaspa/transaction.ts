@@ -1,24 +1,25 @@
 /* eslint-disable @typescript-eslint/naming-convention */
-import { Transaction, crypto } from '@kaspa/core-lib';
 import { bytesToHex } from '@noble/hashes/utils';
 import * as necc from '@noble/secp256k1';
+import { Transaction, crypto } from '@onekeyfe/kaspa-core-lib';
 import BigNumber from 'bignumber.js';
 
 import { OneKeyInternalError } from '@onekeyhq/shared/src/errors';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import hexUtils from '@onekeyhq/shared/src/utils/hexUtils';
 
 import ecc from '../../../secret/nobleSecp256k1Wrapper';
 
-import { DEFAULT_SEQNUMBER } from './constant';
+import { DEFAULT_FEE_RATE, DEFAULT_SEQNUMBER } from './constant';
 import { UnspentOutput } from './types';
 
 import type {
-  SubmitTransactionRequest,
-  TransactionInput,
-  TransactionOutput,
+  IKaspaSubmitTransactionRequest,
+  IKaspaTransactionInput,
+  IKaspaTransactionOutput,
 } from './types';
 import type { IEncodedTxKaspa, IKaspaSigner } from '../types';
-import type { Script } from '@kaspa/core-lib';
+import type { Script } from '@onekeyfe/kaspa-core-lib';
 
 export enum SignatureType {
   SIGHASH_ALL = 0x01,
@@ -40,22 +41,26 @@ export function toTransaction(tx: IEncodedTxKaspa): Transaction {
   const { address: to, value } = outputs[0];
 
   let sendAmount = new BigNumber(value);
+
+  const fee = new BigNumber(tx.feeInfo?.price ?? DEFAULT_FEE_RATE)
+    .multipliedBy(mass)
+    .toFixed();
   if (tx.hasMaxSend) {
-    sendAmount = sendAmount.minus(mass);
+    sendAmount = sendAmount.minus(fee);
   }
 
   if (sendAmount.isLessThan(0)) {
     throw new OneKeyInternalError({
       message: 'Insufficient Balance.',
-      key: 'msg__insufficient_balance',
+      key: ETranslations.swap_page_button_insufficient_balance,
     });
   }
 
   const txn = new Transaction()
     .from(inputs.map((input) => new UnspentOutput(input)))
-    .to(to, sendAmount.toNumber())
+    .to(to, sendAmount.toFixed())
     .setVersion(0)
-    .fee(mass)
+    .fee(parseInt(fee, 10))
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-member-access
     .change(from?.toString());
 
@@ -272,11 +277,11 @@ export function transactionFromString(hex: string): Transaction {
 
 export function submitTransactionFromString(
   hex: string,
-): SubmitTransactionRequest {
+): IKaspaSubmitTransactionRequest {
   const tx = new Transaction(hex);
 
   const { nLockTime: lockTime, version } = tx;
-  const inputs: TransactionInput[] = tx.inputs.map(
+  const inputs: IKaspaTransactionInput[] = tx.inputs.map(
     (input: Transaction.Input) => ({
       previousOutpoint: {
         transactionId: input.prevTxId.toString('hex'),
@@ -288,9 +293,9 @@ export function submitTransactionFromString(
     }),
   );
 
-  const outputs: TransactionOutput[] = tx.outputs.map(
+  const outputs: IKaspaTransactionOutput[] = tx.outputs.map(
     (output: Transaction.Output) => ({
-      amount: output.satoshis,
+      amount: new BigNumber(output.satoshis).toFixed(),
       scriptPublicKey: {
         scriptPublicKey: output.script.toBuffer().toString('hex'),
         version: 0,

@@ -9,14 +9,17 @@ import {
 } from 'react';
 
 import { AuthenticationType } from 'expo-local-authentication';
+import { useIntl } from 'react-intl';
 
 import type { IKeyOfIcons, IPropsWithTestId } from '@onekeyhq/components';
 import { Form, Input, useForm } from '@onekeyhq/components';
-import { usePasswordPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import { usePasswordAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import { EPasswordVerifyStatus } from '@onekeyhq/shared/types/password';
 
 import { useHandleAppStateActive } from '../../../hooks/useHandleAppStateActive';
-import { PasswordRegex, getPasswordKeyboardType } from '../utils';
+import { getPasswordKeyboardType } from '../utils';
 
 interface IPasswordVerifyProps {
   authType: AuthenticationType[];
@@ -42,17 +45,35 @@ const PasswordVerify = ({
   onPasswordChange,
   onInputPasswordAuth,
 }: IPasswordVerifyProps) => {
+  const intl = useIntl();
   const form = useForm<IPasswordVerifyForm>({
     mode: 'onSubmit',
     reValidateMode: 'onSubmit',
     defaultValues: { password: '' },
   });
-
+  const timeOutRef = useRef<NodeJS.Timeout | null>(null);
+  const isEnableRef = useRef(isEnable);
+  if (isEnableRef.current !== isEnable) {
+    isEnableRef.current = isEnable;
+  }
+  useEffect(() => {
+    // enable first false should wait some logic to get final value
+    timeOutRef.current = setTimeout(() => {
+      if (!isEnableRef.current) {
+        form.setFocus('password');
+      }
+    }, 500);
+    return () => {
+      if (timeOutRef.current) {
+        clearTimeout(timeOutRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [secureEntry, setSecureEntry] = useState(true);
   const lastTime = useRef(0);
   const passwordInput = form.watch('password');
-  const [{ manualLocking }] = usePasswordPersistAtom();
-
+  const [{ manualLocking }] = usePasswordAtom();
   const rightActions = useMemo(() => {
     const actions: IPropsWithTestId<{
       iconName?: IKeyOfIcons;
@@ -60,11 +81,19 @@ const PasswordVerify = ({
       loading?: boolean;
     }>[] = [];
     if (isEnable && !passwordInput) {
+      let iconName: IKeyOfIcons =
+        authType &&
+        (authType.includes(AuthenticationType.FACIAL_RECOGNITION) ||
+          authType.includes(AuthenticationType.IRIS))
+          ? 'FaceIdOutline'
+          : 'TouchId2Outline';
+      if (platformEnv.isDesktopWin) {
+        iconName = 'WindowsHelloSolid';
+      } else if (platformEnv.isExtension) {
+        iconName = 'PassKeySolid';
+      }
       actions.push({
-        iconName:
-          authType && authType.includes(AuthenticationType.FACIAL_RECOGNITION)
-            ? 'FaceArcSolid'
-            : 'TouchId2Outline',
+        iconName,
         onPress: onBiologyAuth,
         loading: status.value === EPasswordVerifyStatus.VERIFYING,
       });
@@ -139,23 +168,33 @@ const PasswordVerify = ({
       <Form.Field
         name="password"
         rules={{
-          required: { value: true, message: 'req input text' },
+          required: {
+            value: true,
+            message: intl.formatMessage({
+              id: ETranslations.auth_error_password_incorrect,
+            }),
+          },
           onChange: onPasswordChange,
         }}
       >
         <Input
-          autoFocus
           selectTextOnFocus
           size="large"
-          disabled={status.value === EPasswordVerifyStatus.VERIFYING}
-          placeholder="Enter your password"
+          editable={status.value !== EPasswordVerifyStatus.VERIFYING}
+          placeholder={intl.formatMessage({
+            id: ETranslations.auth_enter_your_password,
+          })}
           flex={1}
-          onChangeText={(text) => text.replace(PasswordRegex, '')}
+          // onChangeText={(text) => text.replace(PasswordRegex, '')}
+          onChangeText={(text) => text}
           keyboardType={getPasswordKeyboardType(!secureEntry)}
           secureTextEntry={secureEntry}
+          // fix Keyboard Flickering on TextInput with secureTextEntry #39411
+          // https://github.com/facebook/react-native/issues/39411
+          textContentType="oneTimeCode"
           onSubmitEditing={form.handleSubmit(onInputPasswordAuth)}
           addOns={rightActions}
-          testID="enter-password"
+          testID="password-input"
         />
       </Form.Field>
     </Form>

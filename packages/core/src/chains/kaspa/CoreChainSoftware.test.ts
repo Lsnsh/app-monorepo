@@ -1,3 +1,5 @@
+import { NotImplemented } from '@onekeyhq/shared/src/errors';
+
 import coreTestsUtils from '../../../@tests/coreTestsUtils';
 import coreTestsFixtures from '../../../@tests/fixtures/coreTestsFixtures';
 
@@ -47,8 +49,8 @@ const {
             'scriptPubKey':
               '207afdae557e69c0040fd4135adffc60f9486fb21f4cbae233fd6db3e84ba47c55ac',
             'scriptPublicKeyVersion': 0,
-            'satoshis': 4549745588,
-            'blockDaaScore': 58668091,
+            'satoshis': 4_549_745_588,
+            'blockDaaScore': 58_668_091,
           },
         ],
         'outputs': [
@@ -129,6 +131,6 @@ describe('KASPA Core tests', () => {
   it.skip('signMessage', async () => {
     // const coreApi = new CoreChainHd();
     // coreApi.signMessage
-    throw new Error('Method not implemented.');
+    throw new NotImplemented();
   });
 });

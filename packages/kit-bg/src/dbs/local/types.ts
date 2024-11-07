@@ -7,10 +7,27 @@ import type {
   WALLET_TYPE_HD,
   WALLET_TYPE_HW,
   WALLET_TYPE_IMPORTED,
+  WALLET_TYPE_QR,
   WALLET_TYPE_WATCHING,
 } from '@onekeyhq/shared/src/consts/dbConsts';
 import type { IAvatarInfo } from '@onekeyhq/shared/src/utils/emojiUtils';
-import type { IOneKeyDeviceFeatures } from '@onekeyhq/shared/types';
+import type {
+  INetworkAccount,
+  IQrWalletAirGapAccount,
+  IQrWalletAirGapAccountsInfo,
+} from '@onekeyhq/shared/types/account';
+import type {
+  IOneKeyDeviceFeatures,
+  IQrWalletDevice,
+} from '@onekeyhq/shared/types/device';
+import type { IExternalConnectionInfo } from '@onekeyhq/shared/types/externalWallet.types';
+import type {
+  IBaseConnectedSite,
+  IBaseCreatedAt,
+  IBaseSignedMessage,
+  IBaseSignedTransaction,
+  IBaseSignedTransactionDataStringify,
+} from '@onekeyhq/shared/types/signatureRecord';
 
 import type { EDBAccountType, EDBCredentialType } from './consts';
 import type { ELocalDBStoreNames } from './localDBStoreNames';
@@ -23,13 +40,13 @@ import type { RealmSchemaDevice } from './realm/schemas/RealmSchemaDevice';
 import type { RealmSchemaIndexedAccount } from './realm/schemas/RealmSchemaIndexedAccount';
 import type { RealmSchemaWallet } from './realm/schemas/RealmSchemaWallet';
 import type { IDeviceType, SearchDevice } from '@onekeyfe/hd-core';
-import type { SignClientTypes } from '@walletconnect/types';
 import type { DBSchema, IDBPObjectStore } from 'idb';
 
 // ---------------------------------------------- base
 export type IDBBaseObject = {
   id: string;
 };
+
 export type IDBBaseObjectWithName = IDBBaseObject & {
   name: string;
 };
@@ -40,6 +57,9 @@ export type IDBContext = {
   verifyString: string;
   networkOrderChanged?: boolean;
   backupUUID: string;
+  nextSignatureMessageId: number;
+  nextSignatureTransactionId: number;
+  nextConnectedSiteId: number;
 };
 export type IDBApiGetContextOptions = {
   verifyPassword?: string;
@@ -92,53 +112,74 @@ export type IDBWalletIdSingleton =
 export type IDBWalletType =
   | typeof WALLET_TYPE_HD
   | typeof WALLET_TYPE_HW
+  | typeof WALLET_TYPE_QR
   | typeof WALLET_TYPE_IMPORTED
   | typeof WALLET_TYPE_WATCHING
   | typeof WALLET_TYPE_EXTERNAL;
+export type IDBWalletNextIdKeys =
+  | 'accountHdIndex'
+  | 'accountGlobalNum'
+  | 'hiddenWalletNum';
+export type IDBWalletNextIds = Partial<Record<IDBWalletNextIdKeys, number>>;
 export type IDBWallet = IDBBaseObjectWithName & {
   type: IDBWalletType;
   backuped: boolean;
-  nextIndex: number; // TODO optional, merge with nextAccountIds
   // only for singleton wallet
   accounts: string[];
   // only for singleton wallet
-  nextAccountIds: {
-    // 'global': 1, // imported, external, watching,
-    // purpose + cointype => index
-    [template: string]: number; // hd
-  };
+  // nextAccountIds: {
+  //   // 'global': 1, // imported, external, watching,
+  //   // 'index': 0, // hd, hw
+  //   // purpose + cointype => index
+  //   // [template: string]: number; // hd
+  // };
+  nextIds: IDBWalletNextIds;
   associatedDevice?: string; // alias to `dbDeviceId`
   avatar?: IDBAvatar;
   avatarInfo?: IAvatarInfo; // readonly field
   hiddenWallets?: IDBWallet[]; // readonly field
-  deviceType?: string;
+  dbAccounts?: IDBAccount[]; // readonly field
+  dbIndexedAccounts?: IDBIndexedAccount[]; // readonly field
   isTemp?: boolean;
   passphraseState?: string;
   walletNo: number;
-  walletOrder?: number;
+  walletOrderSaved?: number; // db field
+  walletOrder?: number; // readonly field
+  firstEvmAddress?: string;
+  hash?: string; // hd wallet only
+  xfp?: string; // qr wallet only
+  airGapAccountsInfoRaw?: string;
+  airGapAccountsInfo?: IQrWalletAirGapAccountsInfo;
 };
 export type IDBCreateHDWalletParams = {
   password: string;
   rs: IBip39RevealableSeedEncryptHex;
   backuped: boolean;
   name?: string;
+  walletHash?: string;
   avatar?: IAvatarInfo;
 };
-export type IDBCreateHWWalletParamsBase = {
+export type IDBCreateHwWalletParamsBase = {
   name?: string;
   device: SearchDevice;
   features: IOneKeyDeviceFeatures;
   isFirmwareVerified?: boolean;
   skipDeviceCancel?: boolean;
   hideCheckingDeviceLoading?: boolean;
+  defaultIsTemp?: boolean;
 };
-export type IDBCreateHWWalletParams = IDBCreateHWWalletParamsBase & {
+export type IDBCreateHwWalletParams = IDBCreateHwWalletParamsBase & {
   passphraseState?: string;
+};
+export type IDBCreateQRWalletParams = {
+  qrDevice: IQrWalletDevice;
+  airGapAccounts: IQrWalletAirGapAccount[];
 };
 export type IDBSetWalletNameAndAvatarParams = {
   walletId: IDBWalletId;
   name?: string;
   avatar?: IAvatarInfo;
+  shouldCheckDuplicate?: boolean;
 };
 export type IDBRemoveWalletParams = {
   walletId: string;
@@ -147,9 +188,18 @@ export type IDBSetAccountNameParams = {
   accountId?: string;
   indexedAccountId?: string;
   name: string;
+  shouldCheckDuplicate?: boolean;
+  skipEventEmit?: boolean;
+};
+export type IDBEnsureAccountNameNotDuplicateParams = {
+  selfAccountOrIndexedAccountId?: string;
+  walletId: string;
+  name: string;
 };
 export type IDBGetWalletsParams = {
   nestedHiddenWallets?: boolean | undefined;
+  ignoreEmptySingletonWalletAccounts?: boolean | undefined;
+  includingAccounts?: boolean | undefined;
 };
 // ---------------------------------------------- account
 export type IDBAvatar = string; // stringify(IAvatarInfo)
@@ -166,9 +216,14 @@ export type IDBBaseAccount = IDBBaseObjectWithName & {
   indexedAccountId?: string;
   coinType: string;
   impl: string; // single chain account belongs to network impl
-  networks?: string[]; // single chain account belongs to certain networks
+  // single chain account belongs to certain networks, check keyring options: onlyAvailableOnCertainNetworks
+  networks?: string[]; // onlyAvailableOnCertainNetworks
+  // single chain account auto change to createAtNetwork when network not compatible and networks not defined
   createAtNetwork?: string;
   template?: string;
+
+  accountOrder?: number; // readonly field
+  accountOrderSaved?: number; // db field
 };
 
 export type IDBSimpleAccount = IDBBaseAccount & {
@@ -180,7 +235,7 @@ export type IDBUtxoAccount = IDBBaseAccount & {
   xpub: string;
   xpubSegwit?: string; // wrap regular xpub into bitcoind native descriptor
   address: string; // Display/selected address
-  addresses: Record<string, string>;
+  addresses: Record<string, string>; // { "0/0": "xxxx" }
   customAddresses?: Record<string, string>; // for btc dynamic custom address
 };
 export type IDBVariantAccount = IDBBaseAccount & {
@@ -190,26 +245,18 @@ export type IDBVariantAccount = IDBBaseAccount & {
   // UTXO: relPath -> address
   addresses: Record<string, string>;
 };
-export type IDBExternalAccountWalletConnectInfo = {
-  topic: string;
-  peerMeta: SignClientTypes.Metadata | undefined;
-  // how to check this account is connected by deeplink redirect at same device,
-  //      but not qrcode scan from another device
-  mobileLink?: string; // StorageUtil.setDeepLinkWallet(data?.wallet?.mobile_link);
-  connectedAddresses: {
-    [networkId: string]: string; // TODO change to string[]
-  };
-  selectedAddress: {
-    [networkId: string]: number;
-  };
+export type IDBAccountAddressesMap = {
+  [networkIdOrImpl: string]: string; // multiple address join(',')
 };
 export type IDBExternalAccount = IDBVariantAccount & {
   address: string; // always be empty if walletconnect account
-  wcInfoRaw?: string;
-  wcInfo?: IDBExternalAccountWalletConnectInfo; // readonly field, json parse from wcInfoRaw
-  wcTopic?: string;
+
+  connectionInfoRaw: string | undefined;
+  connectionInfo?: IExternalConnectionInfo; // readonly field, json parse from connectionInfoRaw
+
+  // TODO merge with addresses
   connectedAddresses: {
-    [networkId: string]: string; // multiple address join(',')
+    [networkIdOrImpl: string]: string; // multiple address join(',')
   };
   selectedAddress: {
     [networkId: string]: number;
@@ -224,7 +271,9 @@ export type IDBIndexedAccount = IDBBaseObjectWithName & {
   walletId: string;
   index: number;
   idHash: string;
-  associateAccount?: IDBAccount; // readonly
+  associateAccount?: INetworkAccount; // readonly
+  orderSaved?: number; // db field
+  order?: number; // readonly
 };
 // TODO remove, use accountsMap instead, wallet->network->derivation(template)
 export type IDBAccountDerivation = IDBBaseObject & {
@@ -243,10 +292,6 @@ export type IDBAddAccountDerivationParams = {
   template: string;
   derivationStore?: IDBObjectStore;
 };
-export type IDBSetNextAccountIdsParams = {
-  walletId: string;
-  nextAccountIds: Record<string, number>;
-};
 
 // ---------------------------------------------- device
 export type IDBDeviceSettings = {
@@ -256,10 +301,12 @@ export type IDBDeviceSettings = {
 export type IDBDevice = IDBBaseObjectWithName & {
   features: string; // TODO rename to featuresRaw
   featuresInfo?: IOneKeyDeviceFeatures; // readonly field // TODO rename to features
-  connectId: string; // alias mac\sn, never changed
+  // TODO make index for better performance (getDeviceByQuery)
+  connectId: string; // alias mac\sn, never changed even if device reset
   name: string;
+  // TODO make index for better performance (getDeviceByQuery)
   uuid: string;
-  deviceId: string; // deviceId changed after device reset
+  deviceId: string; // features.device_id changed after device reset
   deviceType: IDeviceType;
   settingsRaw: string;
   settings?: IDBDeviceSettings;
@@ -281,6 +328,18 @@ export type IDBAddress = IDBBaseObject & {
   wallets: Record<string, string>; // walletId -> indexedAccountId/accountId
 };
 
+export type IDBSignedMessage = IDBBaseObject &
+  IBaseSignedMessage &
+  IBaseCreatedAt;
+export type IDBSignedTransaction = IDBBaseObject &
+  IBaseSignedTransaction &
+  IBaseSignedTransactionDataStringify &
+  IBaseCreatedAt;
+
+export type IDBConnectedSite = IDBBaseObject &
+  IBaseConnectedSite &
+  IBaseCreatedAt;
+
 // DB SCHEMA map ----------------------------------------------
 export interface ILocalDBSchemaMap {
   [ELocalDBStoreNames.Context]: IDBContext;
@@ -291,6 +350,9 @@ export interface ILocalDBSchemaMap {
   [ELocalDBStoreNames.IndexedAccount]: IDBIndexedAccount;
   [ELocalDBStoreNames.Device]: IDBDevice;
   [ELocalDBStoreNames.Address]: IDBAddress;
+  [ELocalDBStoreNames.SignedMessage]: IDBSignedMessage;
+  [ELocalDBStoreNames.SignedTransaction]: IDBSignedTransaction;
+  [ELocalDBStoreNames.ConnectedSite]: IDBConnectedSite;
 }
 
 export interface IRealmDBSchemaMap {
@@ -302,6 +364,9 @@ export interface IRealmDBSchemaMap {
   [ELocalDBStoreNames.IndexedAccount]: RealmSchemaIndexedAccount;
   [ELocalDBStoreNames.Device]: RealmSchemaDevice;
   [ELocalDBStoreNames.Address]: RealmSchemaAddress;
+  [ELocalDBStoreNames.SignedMessage]: IDBSignedMessage;
+  [ELocalDBStoreNames.SignedTransaction]: IDBSignedTransaction;
+  [ELocalDBStoreNames.ConnectedSite]: IDBConnectedSite;
 }
 
 export interface IIndexedDBSchemaMap extends DBSchema {
@@ -337,6 +402,19 @@ export interface IIndexedDBSchemaMap extends DBSchema {
   [ELocalDBStoreNames.Address]: {
     key: string;
     value: IDBAddress;
+  };
+  [ELocalDBStoreNames.SignedMessage]: {
+    key: string;
+    value: IDBSignedMessage;
+    indexes: { createdAt: number };
+  };
+  [ELocalDBStoreNames.SignedTransaction]: {
+    key: string;
+    value: IDBSignedTransaction;
+  };
+  [ELocalDBStoreNames.ConnectedSite]: {
+    key: string;
+    value: IDBConnectedSite;
   };
 }
 
@@ -389,6 +467,24 @@ export type ILocalDBTransactionStores = {
     ELocalDBStoreNames.Address,
     'readwrite'
   >;
+  [ELocalDBStoreNames.SignedMessage]: IDBPObjectStore<
+    IIndexedDBSchemaMap,
+    ELocalDBStoreNames.SignedMessage[],
+    ELocalDBStoreNames.SignedMessage,
+    'readwrite'
+  >;
+  [ELocalDBStoreNames.SignedTransaction]: IDBPObjectStore<
+    IIndexedDBSchemaMap,
+    ELocalDBStoreNames.SignedTransaction[],
+    ELocalDBStoreNames.SignedTransaction,
+    'readwrite'
+  >;
+  [ELocalDBStoreNames.ConnectedSite]: IDBPObjectStore<
+    IIndexedDBSchemaMap,
+    ELocalDBStoreNames.ConnectedSite[],
+    ELocalDBStoreNames.ConnectedSite,
+    'readwrite'
+  >;
 };
 export interface ILocalDBTransaction {
   stores?: ILocalDBTransactionStores;
@@ -432,6 +528,8 @@ export type ILocalDBGetRecordByIdResult<T extends ELocalDBStoreNames> =
 // GetRecords
 export type ILocalDBGetRecordsQuery = {
   ids?: string[];
+  limit?: number;
+  offset?: number;
 };
 export type ILocalDBTxGetAllRecordsParams<T extends ELocalDBStoreNames> = {
   tx: ILocalDBTransaction;

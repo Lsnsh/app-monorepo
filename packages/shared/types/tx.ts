@@ -1,6 +1,13 @@
+import type { IDecodedTxExtraAlgo } from '@onekeyhq/core/src/chains/algo/types';
+import type { IDecodedTxExtraDnx } from '@onekeyhq/core/src/chains/dnx/types';
+import type { IDecodedTxExtraLightning } from '@onekeyhq/core/src/chains/lightning/types';
+import type { IDecodedTxExtraTron } from '@onekeyhq/core/src/chains/tron/types';
+import type { IDecodedTxExtraXrp } from '@onekeyhq/core/src/chains/xrp/types';
 import type { IEncodedTx, ISignedTxPro } from '@onekeyhq/core/src/types';
+import type { IApproveInfo } from '@onekeyhq/kit-bg/src/vaults/types';
 
 import type { IFeeInfoUnit } from './fee';
+import type { EOnChainHistoryTxType } from './history';
 
 export enum EDecodedTxDirection {
   IN = 'IN', // received
@@ -8,8 +15,6 @@ export enum EDecodedTxDirection {
   SELF = 'SELF', // sent to self
   OTHER = 'OTHER',
 }
-
-export type IReplacedTxType = 'speedUp' | 'cancel';
 
 export enum EDecodedTxActionType {
   ASSET_TRANSFER = 'ASSET_TRANSFER',
@@ -43,6 +48,11 @@ export enum EDecodedTxStatus {
   Offline = 'Offline',
 }
 
+export enum EReplaceTxType {
+  SpeedUp = 'SpeedUp',
+  Cancel = 'Cancel',
+}
+
 export type ISendTxBaseParams = {
   networkId: string;
   accountId: string;
@@ -57,6 +67,12 @@ export type IDecodedTxInteractInfo = {
   provider?: string;
 };
 
+export type IDecodedTxPayload = {
+  value: string;
+  label: string;
+  type: EOnChainHistoryTxType;
+};
+
 export type IUtxoAddressInfo = {
   address: string;
   balance: string;
@@ -64,6 +80,13 @@ export type IUtxoAddressInfo = {
   symbol: string;
   isMine: boolean;
 };
+
+export type IDecodedTxExtraInfo =
+  | IDecodedTxExtraAlgo
+  | IDecodedTxExtraLightning
+  | IDecodedTxExtraXrp
+  | IDecodedTxExtraDnx
+  | IDecodedTxExtraTron;
 
 export type IDecodedTx = {
   txid: string; // blockHash
@@ -85,23 +108,28 @@ export type IDecodedTx = {
 
   networkId: string;
   accountId: string;
+  networkLogoURI?: string;
+  xpub?: string;
 
   feeInfo?: IFeeInfoUnit;
+  approveInfo?: IApproveInfo;
   totalFeeInNative?: string;
   totalFeeFiatValue?: string;
 
   interactInfo?: IDecodedTxInteractInfo;
 
-  extraInfo: null;
+  extraInfo: null | IDecodedTxExtraInfo;
 
   encodedTx?: IEncodedTx;
   // used for speed up double check if encodedTx modified by some bugs
   encodedTxEncrypted?: string;
-  payload?: any;
+  payload?: IDecodedTxPayload;
 
   tokenIdOnNetwork?: string; // indicates this tx belongs to which token
   nativeAmount?: string;
   nativeAmountValue?: string;
+
+  originalTxId?: string; // for ton
 };
 
 export type IDecodedTxActionBase = {
@@ -112,7 +140,9 @@ export type IDecodedTxActionBase = {
   icon?: string;
 };
 
-export type IDecodedTxActionUnknown = IDecodedTxActionBase;
+export type IDecodedTxActionUnknown = IDecodedTxActionBase & {
+  label?: string;
+};
 
 export type IDecodedTxTransferInfo = {
   from: string;
@@ -142,31 +172,40 @@ export type IDecodedTxActionAssetTransfer = IDecodedTxActionBase & {
   utxoFrom?: IUtxoAddressInfo[];
   utxoTo?: IUtxoAddressInfo[];
   label?: string;
+  application?: {
+    name: string;
+    icon: string;
+  };
+  internalStakingLabel?: string;
+  isInternalStaking?: boolean;
+  isInternalSwap?: boolean;
+  swapReceivedAddress?: string;
+  swapReceivedNetworkId?: string;
 };
 
 export type IDecodedTxActionTokenApprove = IDecodedTxActionBase & {
   amount: string;
   symbol: string;
   name: string;
-  isMax: boolean;
+  decimals: number;
+  spender: string;
+  isInfiniteAmount: boolean;
   tokenIdOnNetwork: string;
   label?: string;
 };
 
 export type IDecodedTxActionTokenActivate = IDecodedTxActionBase & {
-  tokenAddress: string;
   decimals: number;
   name: string;
   symbol: string;
   tokenIdOnNetwork: string;
-  networkId: string;
 };
 
 export type IDecodedTxAction = {
   type: EDecodedTxActionType;
   direction?: EDecodedTxDirection;
   hidden?: boolean;
-
+  data?: string;
   assetTransfer?: IDecodedTxActionAssetTransfer;
   tokenApprove?: IDecodedTxActionTokenApprove;
   tokenActivate?: IDecodedTxActionTokenActivate;
@@ -179,4 +218,11 @@ export type IDecodedTxAction = {
 export type ISendTxOnSuccessData = {
   signedTx: ISignedTxPro;
   decodedTx: IDecodedTx;
+  feeInfo?: IFeeInfoUnit;
+  approveInfo?: IApproveInfo;
+};
+
+export type IReplaceTxInfo = {
+  replaceType: EReplaceTxType;
+  replaceHistoryId: string;
 };

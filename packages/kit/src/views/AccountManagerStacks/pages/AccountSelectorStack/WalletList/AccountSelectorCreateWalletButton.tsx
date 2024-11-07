@@ -1,107 +1,57 @@
-import { useCallback } from 'react';
+import { useIntl } from 'react-intl';
 
-import type { IKeyOfIcons } from '@onekeyhq/components';
-import {
-  ActionList,
-  IconButton,
-  SizableText,
-  Stack,
-  useMedia,
-} from '@onekeyhq/components';
-import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
-import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
-import useLiteCard from '@onekeyhq/kit/src/views/LiteCard/hooks/useLiteCard';
-import platformEnv from '@onekeyhq/shared/src/platformEnv';
-import { EModalRoutes, EOnboardingPages } from '@onekeyhq/shared/src/routes';
+import { IconButton, SizableText, Stack } from '@onekeyhq/components';
+import { useToOnBoardingPage } from '@onekeyhq/kit/src/views/Onboarding/pages';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+
+import { useAccountSelectorRoute } from '../../../router/useAccountSelectorRoute';
 
 export function AccountSelectorCreateWalletButton() {
-  const media = useMedia();
-  const liteCard = useLiteCard();
+  const intl = useIntl();
 
-  const navigation = useAppNavigation();
+  const route = useAccountSelectorRoute();
+  const toOnBoardingPage = useToOnBoardingPage();
+  // const linkNetwork = route.params?.linkNetwork;
+  const isEditableRouteParams = route.params?.editable;
 
-  const handleConnectHardwareWalletPress = useCallback(() => {
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.ConnectYourDevice,
-    });
-  }, [navigation]);
-
-  const handleCreateWalletPress = useCallback(async () => {
-    await backgroundApiProxy.servicePassword.promptPasswordVerify();
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.BeforeShowRecoveryPhrase,
-    });
-  }, [navigation]);
-
-  const handleImportWalletPress = useCallback(() => {
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.ImportRecoveryPhrase,
-    });
-  }, [navigation]);
-
+  if (!isEditableRouteParams) {
+    return null;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const onboardingButton = (
+    <IconButton
+      onPress={() => {
+        void toOnBoardingPage({
+          params: {
+            showCloseButton: true,
+          },
+        });
+      }}
+      icon="PlusSmallOutline"
+      testID="account-add-wallet"
+    />
+  );
   return (
-    <Stack p="$1" my="$2" alignItems="center">
-      <ActionList
-        placement="right-start"
-        renderTrigger={
-          <IconButton icon="PlusSmallOutline" testID="add-wallet" />
-        }
-        title="Add wallet"
-        floatingPanelProps={{
-          w: '$64',
+    <Stack p="$1" alignItems="center">
+      <IconButton
+        onPress={() => {
+          void toOnBoardingPage({
+            params: {
+              showCloseButton: true,
+            },
+          });
         }}
-        sections={[
-          {
-            items: [
-              {
-                label: 'Connect Hardware Wallet',
-                icon: platformEnv.isNative ? 'BluetoothOutline' : 'UsbOutline',
-                onPress: handleConnectHardwareWalletPress,
-                testID: 'hardware-wallet',
-              },
-            ],
-          },
-          {
-            items: [
-              {
-                label: 'Create Recovery Phrase',
-                icon: 'PlusCircleOutline',
-                onPress: () => void handleCreateWalletPress(),
-                testID: 'create-wallet',
-              },
-            ],
-          },
-          {
-            items: [
-              {
-                label: 'Enter Recovery Phrase',
-                icon: 'Document2Outline',
-                onPress: handleImportWalletPress,
-                testID: 'import-wallet',
-              },
-              ...(platformEnv.isNative
-                ? [
-                    {
-                      label: 'Import with OneKey Lite',
-                      icon: 'OnekeyLiteOutline' as IKeyOfIcons,
-                      onPress: liteCard.importWallet,
-                    },
-                  ]
-                : []),
-              {
-                label: 'Import with OneKey KeyTag',
-                icon: 'OnekeyKeytagOutline',
-                onPress: () => console.log('clicked'),
-              },
-            ],
-          },
-        ]}
+        icon="PlusSmallOutline"
+        testID="add-wallet"
       />
-      {media.gtMd ? (
-        <SizableText size="$bodySm" color="$textSubdued" mt="$1">
-          Add wallet
-        </SizableText>
-      ) : null}
+      <SizableText
+        textAlign="center"
+        size="$bodySm"
+        color="$textSubdued"
+        mt="$1"
+      >
+        {intl.formatMessage({ id: ETranslations.global_add_wallet })}
+      </SizableText>
     </Stack>
   );
 }

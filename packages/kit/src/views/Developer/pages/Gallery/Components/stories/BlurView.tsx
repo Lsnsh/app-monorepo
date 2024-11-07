@@ -3,6 +3,7 @@ import type { PropsWithChildren } from 'react';
 import {
   BlurView,
   ListView,
+  LottieView,
   SizableText,
   Stack,
   XStack,
@@ -66,7 +67,7 @@ function ListDemo() {
     <Background>
       <BlurView w="100%" h="$20" intensity={70}>
         <ListView
-          p="$2"
+          contentContainerStyle={{ p: '$2' }}
           horizontal
           data={mockData}
           showsHorizontalScrollIndicator={false}
@@ -78,6 +79,21 @@ function ListDemo() {
           )}
         />
       </BlurView>
+    </Background>
+  );
+}
+
+function DynamicDemo() {
+  return (
+    <Background>
+      <LottieView
+        width="100%"
+        height="100%"
+        source={require('../../../../../../../assets/animations/enter-pin-on-classic.json')}
+      />
+      <YStack fullscreen>
+        <BlurView w="100%" h="100%" intensity={70} />
+      </YStack>
     </Background>
   );
 }
@@ -95,6 +111,10 @@ const BlurViewGallery = () => (
       {
         title: 'List',
         element: <ListDemo />,
+      },
+      {
+        title: 'Dynimic',
+        element: <DynamicDemo />,
       },
     ]}
   />

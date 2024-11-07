@@ -7,13 +7,16 @@ import {
   useRef,
 } from 'react';
 
-import { withStaticProperties } from 'tamagui';
+import { getTokenValue, withStaticProperties } from 'tamagui';
+
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
 import { SizableText, Stack, XStack } from '../../primitives';
 import { ListView } from '../ListView/list';
 
 import type { ISizableTextProps, IStackProps } from '../../primitives';
 import type { IListViewProps, IListViewRef } from '../ListView/list';
+import type { Tokens } from '@tamagui/web/types/types';
 import type { ListRenderItem } from 'react-native';
 
 type ISectionRenderInfo = (info: {
@@ -23,7 +26,7 @@ type ISectionRenderInfo = (info: {
 
 export type ISectionListProps<T> = Omit<
   IListViewProps<T>,
-  'data' | 'renderItem'
+  'data' | 'renderItem' | 'overrideItemLayout'
 > & {
   sections: Array<{
     data?: any[];
@@ -37,6 +40,9 @@ export type ISectionListProps<T> = Omit<
   renderSectionFooter?: ISectionRenderInfo;
   SectionSeparatorComponent?: ReactNode;
   stickySectionHeadersEnabled?: boolean;
+  estimatedSectionHeaderSize?: number | `$${keyof Tokens['size']}`;
+  estimatedSectionFooterSize?: number | `$${keyof Tokens['size']}`;
+  estimatedSectionSeparatorSize?: number | `$${keyof Tokens['size']}`;
 };
 
 type IScrollToLocationParams = {
@@ -72,9 +78,14 @@ function BaseSectionList<T>(
     renderItem,
     renderSectionHeader,
     renderSectionFooter,
+    ListHeaderComponent,
     SectionSeparatorComponent = <Stack h="$5" />,
     stickySectionHeadersEnabled = false,
     keyExtractor,
+    estimatedItemSize = 0,
+    estimatedSectionHeaderSize = '$9',
+    estimatedSectionFooterSize = 0,
+    estimatedSectionSeparatorSize = '$5',
     ...restProps
   }: ISectionListProps<T>,
   parentRef: ForwardedRef<IListViewRef<T>>,
@@ -115,16 +126,24 @@ function BaseSectionList<T>(
     return reloadSectionList;
   }, [sections]);
 
+  const reloadSectionHeaderIndex = useCallback(
+    (index: number) =>
+      ListHeaderComponent && !platformEnv.isNative ? index + 1 : index,
+    [ListHeaderComponent],
+  );
+
   const reloadStickyHeaderIndices = useMemo(() => {
     if (!stickySectionHeadersEnabled) {
       return undefined;
     }
     return reloadSections
       .map((item, index) =>
-        item.type === ESectionLayoutType.Header ? index : null,
+        item.type === ESectionLayoutType.Header
+          ? reloadSectionHeaderIndex(index)
+          : null,
       )
       .filter((index) => index != null) as number[];
-  }, [stickySectionHeadersEnabled, reloadSections]);
+  }, [reloadSectionHeaderIndex, stickySectionHeadersEnabled, reloadSections]);
 
   const ref = useRef<IListViewRef<T>>(null);
   useImperativeHandle(parentRef as any, () => ({
@@ -147,6 +166,7 @@ function BaseSectionList<T>(
         viewPosition,
       });
     },
+    ...ref.current,
   }));
   const renderSectionAndItem = useCallback(
     ({ item }: { item: T }) => {
@@ -200,14 +220,74 @@ function BaseSectionList<T>(
     },
     [keyExtractor],
   );
+  const getTokenSizeNumber = useCallback(
+    (token?: number | `$${keyof Tokens['size']}`) => {
+      if (typeof token === 'undefined') {
+        return undefined;
+      }
+      return typeof token === 'number'
+        ? token
+        : (getTokenValue(token, 'size') as number);
+    },
+    [],
+  );
+  const tokenSizeNumberList = useMemo(
+    () => ({
+      [ESectionLayoutType.Header]: getTokenSizeNumber(
+        estimatedSectionHeaderSize,
+      ),
+      [ESectionLayoutType.Item]: getTokenSizeNumber(estimatedItemSize),
+      [ESectionLayoutType.Footer]: getTokenSizeNumber(
+        estimatedSectionFooterSize,
+      ),
+      [ESectionLayoutType.SectionSeparator]: getTokenSizeNumber(
+        estimatedSectionSeparatorSize,
+      ),
+    }),
+    [
+      getTokenSizeNumber,
+      estimatedSectionHeaderSize,
+      estimatedItemSize,
+      estimatedSectionFooterSize,
+      estimatedSectionSeparatorSize,
+    ],
+  );
+  const overrideItemLayout = useCallback(
+    (layout: { span?: number; size?: number }, item: T) => {
+      layout.size = tokenSizeNumberList[(item as ISectionLayoutItem).type] ?? 0;
+    },
+    [tokenSizeNumberList],
+  );
+  const layoutList = useMemo(() => {
+    let offset = 0;
+    return reloadSections.map((item, index) => {
+      const size = tokenSizeNumberList[item.type] ?? 0;
+      offset += size;
+      return { offset, length: size, index };
+    });
+  }, [reloadSections, tokenSizeNumberList]);
+  const getItemLayout = useCallback(
+    (_: ArrayLike<T> | null | undefined, index: number) =>
+      index === -1 ? { index, offset: 0, length: 0 } : layoutList[index],
+    [layoutList],
+  );
   return (
     <ListView
       ref={ref}
       data={reloadSections as T[]}
       renderItem={renderSectionAndItem as ListRenderItem<T>}
+      ListHeaderComponent={ListHeaderComponent}
       stickyHeaderIndices={reloadStickyHeaderIndices}
       getItemType={getItemType}
       keyExtractor={reloadKeyExtractor}
+      estimatedItemSize={estimatedItemSize}
+      {...(platformEnv.isNative
+        ? {
+            overrideItemLayout,
+          }
+        : {
+            getItemLayout,
+          })}
       {...restProps}
     />
   );

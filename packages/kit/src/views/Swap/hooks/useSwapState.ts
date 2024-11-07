@@ -1,407 +1,239 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import BigNumber from 'bignumber.js';
+import { useIntl } from 'react-intl';
 
-import accountUtils from '@onekeyhq/shared/src/utils/accountUtils';
-import { numberFormat } from '@onekeyhq/shared/src/utils/numberUtils';
-import {
-  swapRateDifferenceMax,
-  swapRateDifferenceMin,
-} from '@onekeyhq/shared/types/swap/SwapProvider.constants';
+import { useRouteIsFocused as useIsFocused } from '@onekeyhq/kit/src/hooks/useRouteIsFocused';
+import { useSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { swapQuoteIntervalMaxCount } from '@onekeyhq/shared/types/swap/SwapProvider.constants';
 import type {
-  ISwapAlertState,
+  ISwapCheckWarningDef,
   ISwapState,
 } from '@onekeyhq/shared/types/swap/types';
 import {
   ESwapAlertLevel,
   ESwapDirectionType,
-  ESwapRateDifferenceUnit,
 } from '@onekeyhq/shared/types/swap/types';
 
+import { useDebounce } from '../../../hooks/useDebounce';
 import {
+  useSwapActions,
+  useSwapAlertsAtom,
   useSwapBuildTxFetchingAtom,
   useSwapFromTokenAmountAtom,
-  useSwapNetworksAtom,
   useSwapQuoteApproveAllowanceUnLimitAtom,
   useSwapQuoteCurrentSelectAtom,
+  useSwapQuoteEventTotalCountAtom,
   useSwapQuoteFetchingAtom,
+  useSwapQuoteIntervalCountAtom,
+  useSwapQuoteListAtom,
   useSwapSelectFromTokenAtom,
   useSwapSelectToTokenAtom,
   useSwapSelectedFromTokenBalanceAtom,
+  useSwapShouldRefreshQuoteAtom,
+  useSwapSilenceQuoteLoading,
 } from '../../../states/jotai/contexts/swap';
 
 import { useSwapAddressInfo } from './useSwapAccount';
 
 function useSwapWarningCheck() {
-  const [fromToken] = useSwapSelectFromTokenAtom();
-  const [networks] = useSwapNetworksAtom();
   const swapFromAddressInfo = useSwapAddressInfo(ESwapDirectionType.FROM);
   const swapToAddressInfo = useSwapAddressInfo(ESwapDirectionType.TO);
-  const [fromTokenAmount] = useSwapFromTokenAmountAtom();
+  const [fromToken] = useSwapSelectFromTokenAtom();
   const [toToken] = useSwapSelectToTokenAtom();
-  const [quoteResult] = useSwapQuoteCurrentSelectAtom();
-  const [swapSelectFromTokenBalance] = useSwapSelectedFromTokenBalanceAtom();
-
-  const checkSwapWarning = useCallback(() => {
-    let alerts: ISwapAlertState[] = [];
-    let rateDifference:
-      | { value: string; unit: ESwapRateDifferenceUnit }
-      | undefined;
-    // check account
-    if (!swapFromAddressInfo.accountInfo?.wallet) {
-      alerts = [
-        ...alerts,
-        {
-          message: 'No connected wallet.',
-          alertLevel: ESwapAlertLevel.ERROR,
-        },
-      ];
+  const [quoteCurrentSelect] = useSwapQuoteCurrentSelectAtom();
+  const [fromTokenAmount] = useSwapFromTokenAmountAtom();
+  const [fromTokenBalance] = useSwapSelectedFromTokenBalanceAtom();
+  const { checkSwapWarning } = useSwapActions().current;
+  const refContainer = useRef<ISwapCheckWarningDef>({
+    swapFromAddressInfo: {
+      address: undefined,
+      networkId: undefined,
+      accountInfo: undefined,
+      activeAccount: undefined,
+    },
+    swapToAddressInfo: {
+      address: undefined,
+      networkId: undefined,
+      accountInfo: undefined,
+      activeAccount: undefined,
+    },
+  });
+  const isFocused = useIsFocused();
+  const asyncRefContainer = useCallback(() => {
+    if (refContainer.current.swapFromAddressInfo !== swapFromAddressInfo) {
+      refContainer.current.swapFromAddressInfo = swapFromAddressInfo;
     }
-
-    if (
-      fromToken &&
-      ((!swapFromAddressInfo.address &&
-        !accountUtils.isHdWallet({
-          walletId: swapFromAddressInfo.accountInfo?.wallet?.id,
-        }) &&
-        !accountUtils.isHwWallet({
-          walletId: swapFromAddressInfo.accountInfo?.wallet?.id,
-        })) ||
-        swapFromAddressInfo.networkId !== fromToken.networkId)
-    ) {
-      alerts = [
-        ...alerts,
-        {
-          message: `The connected wallet do not support ${
-            networks.find((net) => net.networkId === fromToken.networkId)
-              ?.name ?? 'unknown'
-          }. Try switch to another one.`,
-          alertLevel: ESwapAlertLevel.ERROR,
-        },
-      ];
+    if (refContainer.current.swapToAddressInfo !== swapToAddressInfo) {
+      refContainer.current.swapToAddressInfo = swapToAddressInfo;
     }
+  }, [swapFromAddressInfo, swapToAddressInfo]);
 
-    if (
-      toToken &&
-      ((!swapToAddressInfo.address &&
-        !accountUtils.isHdWallet({
-          walletId: swapToAddressInfo.accountInfo?.wallet?.id,
-        }) &&
-        !accountUtils.isHwWallet({
-          walletId: swapToAddressInfo.accountInfo?.wallet?.id,
-        })) ||
-        swapToAddressInfo.networkId !== toToken.networkId)
-    ) {
-      alerts = [
-        ...alerts,
-        {
-          message: `The connected wallet do not support ${
-            networks.find((net) => net.networkId === toToken.networkId)?.name ??
-            'unknown'
-          }. Try switch to another one.`,
-          alertLevel: ESwapAlertLevel.ERROR,
-        },
-      ];
+  useEffect(() => {
+    if (isFocused) {
+      asyncRefContainer();
+      void checkSwapWarning(
+        refContainer.current.swapFromAddressInfo,
+        refContainer.current.swapToAddressInfo,
+      );
     }
-
-    if (
-      fromToken &&
-      accountUtils.isWatchingWallet({
-        walletId: swapFromAddressInfo.accountInfo?.wallet?.id,
-      })
-    ) {
-      alerts = [
-        ...alerts,
-        {
-          message: `The connected wallet do not support swap. Try switch to another one.`,
-          alertLevel: ESwapAlertLevel.ERROR,
-        },
-      ];
-    }
-
-    if (
-      fromToken &&
-      !swapFromAddressInfo.address &&
-      (accountUtils.isHdWallet({
-        walletId: swapFromAddressInfo.accountInfo?.wallet?.id,
-      }) ||
-        accountUtils.isHwWallet({
-          walletId: swapFromAddressInfo.accountInfo?.wallet?.id,
-        }))
-    ) {
-      alerts = [
-        ...alerts,
-        {
-          message: `${
-            swapFromAddressInfo.accountInfo?.wallet?.name ?? 'unknown'
-          } - ${
-            swapFromAddressInfo.accountInfo?.accountName ?? 'unknown'
-          } lacks ${
-            swapFromAddressInfo.accountInfo?.network?.name ?? 'unknown'
-          } address. Please try to create one.`,
-          alertLevel: ESwapAlertLevel.ERROR,
-        },
-      ];
-    }
-
-    if (
-      toToken &&
-      !swapToAddressInfo.address &&
-      (accountUtils.isHdWallet({
-        walletId: swapToAddressInfo.accountInfo?.wallet?.id,
-      }) ||
-        accountUtils.isHwWallet({
-          walletId: swapToAddressInfo.accountInfo?.wallet?.id,
-        })) &&
-      swapFromAddressInfo.networkId !== swapToAddressInfo.networkId
-    ) {
-      alerts = [
-        ...alerts,
-        {
-          message: `${
-            swapToAddressInfo.accountInfo?.wallet?.name ?? 'unknown'
-          } - ${
-            swapToAddressInfo.accountInfo?.accountName ?? 'unknown'
-          } lacks ${
-            swapToAddressInfo.accountInfo?.network?.name ?? 'unknown'
-          } address. Please try to create one.`,
-          alertLevel: ESwapAlertLevel.ERROR,
-        },
-      ];
-    }
-
-    // provider toAmount check
-    if (quoteResult && !quoteResult?.toAmount && !quoteResult?.limit) {
-      alerts = [
-        ...alerts,
-        {
-          message: 'No provider supports this trade.',
-          alertLevel: ESwapAlertLevel.ERROR,
-        },
-      ];
-    }
-
-    // provider best check
-    if (quoteResult?.toAmount && !quoteResult.isBest) {
-      alerts = [
-        ...alerts,
-        {
-          message:
-            'The current provider does not offer the best rate for this trade.',
-          alertLevel: ESwapAlertLevel.WARNING,
-        },
-      ];
-    }
-
-    // price check
-    if ((fromToken && !fromToken?.price) || (toToken && !toToken?.price)) {
-      alerts = [
-        ...alerts,
-        {
-          message: `Failed to fetch ${
-            !fromToken?.price
-              ? fromToken?.name ?? fromToken?.symbol ?? 'unknown'
-              : toToken?.name ?? toToken?.symbol ?? 'unknown'
-          } price.You can still proceed with the trade.`,
-          alertLevel: ESwapAlertLevel.WARNING,
-        },
-      ];
-    }
-
-    // market rate check
-    if (fromToken?.price && toToken?.price && quoteResult?.instantRate) {
-      const fromTokenPrice = new BigNumber(fromToken.price);
-      const toTokenPrice = new BigNumber(toToken.price);
-      const marketingRate = fromTokenPrice
-        .dividedBy(toTokenPrice)
-        .decimalPlaces(6);
-      const quoteRateBN = new BigNumber(quoteResult.instantRate);
-      const difference = quoteRateBN
-        .dividedBy(marketingRate)
-        .minus(1)
-        .multipliedBy(100);
-      if (difference.absoluteValue().gte(swapRateDifferenceMin)) {
-        let unit = ESwapRateDifferenceUnit.POSITIVE;
-        if (difference.isNegative()) {
-          if (difference.lte(swapRateDifferenceMax)) {
-            unit = ESwapRateDifferenceUnit.NEGATIVE;
-          } else {
-            unit = ESwapRateDifferenceUnit.DEFAULT;
-          }
-        }
-        rateDifference = {
-          value: `(${difference.isPositive() ? '+' : ''}${
-            numberFormat(difference.toFixed(), {
-              formatter: 'priceChange',
-            }) as string
-          })`,
-          unit,
-        };
-      }
-      if (quoteRateBN.isZero()) {
-        alerts = [
-          ...alerts,
-          {
-            message: `100% value drop! High price impact may cause your asset loss.`,
-            alertLevel: ESwapAlertLevel.WARNING,
-          },
-        ];
-      } else if (difference.lt(swapRateDifferenceMax)) {
-        alerts = [
-          ...alerts,
-          {
-            message: `${
-              numberFormat(difference.absoluteValue().toFixed(), {
-                formatter: 'priceChange',
-              }) as string
-            } value drop! High price impact may cause your asset loss.`,
-            alertLevel: ESwapAlertLevel.WARNING,
-          },
-        ];
-      }
-    }
-
-    const fromTokenAmountBN = new BigNumber(fromTokenAmount);
-    // check min max amount
-    if (quoteResult && quoteResult.limit?.min) {
-      const minAmountBN = new BigNumber(quoteResult.limit.min);
-      if (fromTokenAmountBN.lt(minAmountBN)) {
-        alerts = [
-          ...alerts,
-          {
-            message: `The minimum amount for this swap is ${minAmountBN.toFixed()} ${
-              fromToken?.symbol ?? 'unknown'
-            }`,
-            alertLevel: ESwapAlertLevel.ERROR,
-            inputShowError: true,
-          },
-        ];
-      }
-    }
-    if (quoteResult && quoteResult.limit?.max) {
-      const maxAmountBN = new BigNumber(quoteResult.limit.max);
-      if (fromTokenAmountBN.gt(maxAmountBN)) {
-        alerts = [
-          ...alerts,
-          {
-            message: `The maximum amount for this swap is ${maxAmountBN.toFixed()} ${
-              fromToken?.symbol ?? 'unknown'
-            }`,
-            alertLevel: ESwapAlertLevel.ERROR,
-            inputShowError: true,
-          },
-        ];
-      }
-    }
-
-    const fromTokenPriceBN = new BigNumber(fromToken?.price ?? 0);
-    const tokenFiatValueBN = fromTokenAmountBN.multipliedBy(fromTokenPriceBN);
-
-    const gasFeeBN = new BigNumber(
-      quoteResult?.fee?.estimatedFeeFiatValue ?? 0,
-    );
-    if (
-      !(tokenFiatValueBN.isNaN() || tokenFiatValueBN.isZero()) &&
-      gasFeeBN.gt(tokenFiatValueBN)
-    ) {
-      alerts = [
-        ...alerts,
-        {
-          message: 'Est Network fee exceeds swap amount, proceed with caution.',
-          alertLevel: ESwapAlertLevel.WARNING,
-        },
-      ];
-    }
-
-    if (
-      fromToken?.isNative &&
-      fromTokenAmountBN.isEqualTo(
-        new BigNumber(swapSelectFromTokenBalance ?? 0),
-      )
-    ) {
-      alerts = [
-        ...alerts,
-        {
-          message: `Network fee in ${fromToken.symbol} deducted automatically in the next step.`,
-          alertLevel: ESwapAlertLevel.INFO,
-        },
-      ];
-    }
-    return { alerts, rateDifference };
   }, [
+    asyncRefContainer,
+    checkSwapWarning,
     fromToken,
     fromTokenAmount,
-    networks,
-    quoteResult,
-    swapFromAddressInfo.accountInfo?.accountName,
-    swapFromAddressInfo.accountInfo?.network?.name,
-    swapFromAddressInfo.accountInfo?.wallet,
-    swapFromAddressInfo.address,
-    swapFromAddressInfo.networkId,
-    swapSelectFromTokenBalance,
-    swapToAddressInfo.accountInfo?.accountName,
-    swapToAddressInfo.accountInfo?.network?.name,
-    swapToAddressInfo.accountInfo?.wallet?.id,
-    swapToAddressInfo.accountInfo?.wallet?.name,
-    swapToAddressInfo.address,
-    swapToAddressInfo.networkId,
     toToken,
+    fromTokenBalance,
+    quoteCurrentSelect,
+    isFocused,
   ]);
-  return {
-    checkSwapWarning,
-  };
+}
+
+export function useSwapQuoteLoading() {
+  const [quoteFetching] = useSwapQuoteFetchingAtom();
+  const [silenceQuoteLoading] = useSwapSilenceQuoteLoading();
+  return quoteFetching || silenceQuoteLoading;
+}
+
+export function useSwapQuoteEventFetching() {
+  const [quoteEventTotalCount] = useSwapQuoteEventTotalCountAtom();
+  const [quoteResult] = useSwapQuoteListAtom();
+  return quoteEventTotalCount > 0 && quoteResult.length < quoteEventTotalCount;
 }
 
 export function useSwapActionState() {
-  const [quoteFetching] = useSwapQuoteFetchingAtom();
+  const intl = useIntl();
+  const quoteLoading = useSwapQuoteLoading();
+  const quoteEventFetching = useSwapQuoteEventFetching();
   const [quoteCurrentSelect] = useSwapQuoteCurrentSelectAtom();
   const [buildTxFetching] = useSwapBuildTxFetchingAtom();
   const [fromTokenAmount] = useSwapFromTokenAmountAtom();
   const [fromToken] = useSwapSelectFromTokenAtom();
   const [toToken] = useSwapSelectToTokenAtom();
+  const [settingsPersistAtom] = useSettingsPersistAtom();
+  const [shouldRefreshQuote] = useSwapShouldRefreshQuoteAtom();
   const [swapQuoteApproveAllowanceUnLimit] =
     useSwapQuoteApproveAllowanceUnLimitAtom();
-  const { checkSwapWarning } = useSwapWarningCheck();
-
+  useSwapWarningCheck();
+  const [alerts] = useSwapAlertsAtom();
   const [selectedFromTokenBalance] = useSwapSelectedFromTokenBalanceAtom();
   const isCrossChain = fromToken?.networkId !== toToken?.networkId;
   const swapFromAddressInfo = useSwapAddressInfo(ESwapDirectionType.FROM);
-  const { alerts, rateDifference } = checkSwapWarning();
-  const hasError = alerts.some(
+  const swapToAddressInfo = useSwapAddressInfo(ESwapDirectionType.TO);
+  const [quoteIntervalCount] = useSwapQuoteIntervalCountAtom();
+  const isRefreshQuote =
+    quoteIntervalCount > swapQuoteIntervalMaxCount || shouldRefreshQuote;
+  const hasError = alerts.states.some(
     (item) => item.alertLevel === ESwapAlertLevel.ERROR,
   );
+  const quoteResultNoMatch = useMemo(
+    () =>
+      (quoteCurrentSelect &&
+        (quoteCurrentSelect.fromTokenInfo.networkId !== fromToken?.networkId ||
+          quoteCurrentSelect.toTokenInfo.networkId !== toToken?.networkId ||
+          quoteCurrentSelect.fromTokenInfo.contractAddress !==
+            fromToken?.contractAddress ||
+          quoteCurrentSelect.toTokenInfo.contractAddress !==
+            toToken?.contractAddress)) ||
+      (quoteCurrentSelect?.allowanceResult &&
+        quoteCurrentSelect.allowanceResult.amount !== fromTokenAmount),
+    [
+      fromToken?.contractAddress,
+      fromToken?.networkId,
+      fromTokenAmount,
+      quoteCurrentSelect,
+      toToken?.contractAddress,
+      toToken?.networkId,
+    ],
+  );
+  const quoteResultNoMatchDebounce = useDebounce(quoteResultNoMatch, 10);
   const actionInfo = useMemo(() => {
     const infoRes = {
       disable: !(!hasError && !!quoteCurrentSelect),
-      label: 'Swap',
+      label: intl.formatMessage({ id: ETranslations.swap_page_swap_button }),
     };
-    if (quoteFetching) {
-      infoRes.label = 'Fetching quotes';
+    if (
+      !swapFromAddressInfo.address ||
+      !swapToAddressInfo.address ||
+      quoteCurrentSelect?.fromAmount !== fromTokenAmount
+    ) {
+      infoRes.disable = true;
+    }
+    if (quoteLoading || quoteEventFetching) {
+      infoRes.label = intl.formatMessage({
+        id: ETranslations.swap_page_button_fetching_quotes,
+      });
     } else {
       if (isCrossChain && fromToken && toToken) {
-        infoRes.label = 'Cross-Chain Swap';
+        infoRes.label = intl.formatMessage({
+          id: ETranslations.swap_page_button_cross_chain,
+        });
       }
       if (quoteCurrentSelect && quoteCurrentSelect.isWrapped) {
-        infoRes.label = 'Wrapped';
+        infoRes.label = intl.formatMessage({
+          id: ETranslations.swap_page_button_wrap,
+        });
       }
       if (quoteCurrentSelect && quoteCurrentSelect.allowanceResult) {
-        infoRes.label = swapQuoteApproveAllowanceUnLimit
-          ? `Approve Unlimited ${fromToken?.symbol ?? ''} to ${
-              quoteCurrentSelect?.info.providerName ?? ''
-            }`
-          : `Approve  ${fromTokenAmount} ${fromToken?.symbol ?? ''} to ${
-              quoteCurrentSelect?.info.providerName ?? ''
-            }`;
+        infoRes.label = intl.formatMessage({
+          id: settingsPersistAtom.swapBatchApproveAndSwap
+            ? ETranslations.swap_page_approve_and_swap
+            : ETranslations.global_approve,
+        });
       }
-      const fromTokenAmountBN = new BigNumber(fromTokenAmount);
+      if (
+        quoteCurrentSelect &&
+        !quoteCurrentSelect.toAmount &&
+        !quoteCurrentSelect.limit
+      ) {
+        infoRes.label = intl.formatMessage({
+          id: ETranslations.swap_page_alert_no_provider_supports_trade,
+        });
+        infoRes.disable = true;
+      }
+
+      if (
+        quoteCurrentSelect &&
+        quoteCurrentSelect.toAmount &&
+        !swapToAddressInfo.address
+      ) {
+        infoRes.label = intl.formatMessage({
+          id: ETranslations.swap_page_button_enter_a_recipient,
+        });
+        infoRes.disable = true;
+      }
+
       const balanceBN = new BigNumber(selectedFromTokenBalance ?? 0);
+      const fromTokenAmountBN = new BigNumber(fromTokenAmount);
       if (
         fromToken &&
         swapFromAddressInfo.address &&
         balanceBN.lt(fromTokenAmountBN)
       ) {
-        infoRes.label = 'Insufficient balance';
+        infoRes.label = intl.formatMessage({
+          id: ETranslations.swap_page_button_insufficient_balance,
+        });
         infoRes.disable = true;
+      }
+
+      if (!fromToken || !toToken) {
+        infoRes.label = intl.formatMessage({
+          id: ETranslations.swap_page_button_select_token,
+        });
+        infoRes.disable = true;
+      }
+      if (!fromTokenAmount) {
+        infoRes.label = intl.formatMessage({
+          id: ETranslations.swap_page_button_enter_amount,
+        });
+        infoRes.disable = true;
+      }
+      if (isRefreshQuote || quoteResultNoMatchDebounce) {
+        infoRes.label = intl.formatMessage({
+          id: ETranslations.swap_page_button_refresh_quotes,
+        });
+        infoRes.disable = false;
       }
     }
     return infoRes;
@@ -409,27 +241,34 @@ export function useSwapActionState() {
     fromToken,
     fromTokenAmount,
     hasError,
+    intl,
     isCrossChain,
+    isRefreshQuote,
     quoteCurrentSelect,
-    quoteFetching,
+    quoteEventFetching,
+    quoteLoading,
+    quoteResultNoMatchDebounce,
     selectedFromTokenBalance,
+    settingsPersistAtom.swapBatchApproveAndSwap,
     swapFromAddressInfo.address,
-    swapQuoteApproveAllowanceUnLimit,
+    swapToAddressInfo.address,
     toToken,
   ]);
 
   const stepState: ISwapState = {
     label: actionInfo.label,
-    rateDifference,
-    isLoading: quoteFetching || buildTxFetching,
-    disabled: actionInfo.disable,
+    isLoading: buildTxFetching,
+    disabled: actionInfo.disable || quoteLoading || quoteEventFetching,
     approveUnLimit: swapQuoteApproveAllowanceUnLimit,
     isApprove: !!quoteCurrentSelect?.allowanceResult,
     isCrossChain,
     shoutResetApprove:
       !!quoteCurrentSelect?.allowanceResult?.shouldResetApprove,
-    alerts,
     isWrapped: !!quoteCurrentSelect?.isWrapped,
+    isRefreshQuote:
+      (isRefreshQuote || quoteResultNoMatchDebounce) &&
+      !quoteLoading &&
+      !quoteEventFetching,
   };
   return stepState;
 }

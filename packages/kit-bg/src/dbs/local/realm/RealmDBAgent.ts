@@ -1,5 +1,11 @@
-import { checkIsDefined } from '@onekeyhq/shared/src/utils/assertUtils';
+import { Semaphore, withTimeout } from 'async-mutex';
+import { isNumber } from 'lodash';
 
+import { checkIsDefined } from '@onekeyhq/shared/src/utils/assertUtils';
+import resetUtils from '@onekeyhq/shared/src/utils/resetUtils';
+import timerUtils from '@onekeyhq/shared/src/utils/timerUtils';
+
+import { storeNameSupportCreatedAt } from '../consts';
 import { LocalDbAgentBase } from '../LocalDbAgentBase';
 
 import { realmDBSchemasMap } from './schemas';
@@ -55,12 +61,12 @@ export class RealmDBAgent extends LocalDbAgentBase implements ILocalDBAgent {
     recordId: string,
   ) {
     checkIsDefined(storeName);
-    console.log('realmdb _getObjectRecordById ', { storeName, recordId });
+    // console.log('realmdb _getObjectRecordById ', { storeName, recordId });
     const object = this.realm.objectForPrimaryKey<IRealmDBSchemaMap[T]>(
       storeName,
       recordId as any,
     );
-    console.log('realmdb _getObjectRecordById ', object);
+    // console.log('realmdb _getObjectRecordById ', object);
     return object;
   }
 
@@ -80,27 +86,45 @@ export class RealmDBAgent extends LocalDbAgentBase implements ILocalDBAgent {
   }
 
   // ----------------------------------------------
+  withTransactionMutex = withTimeout(
+    new Semaphore(1),
+    // Error: timeout while waiting for mutex to become available
+    timerUtils.getTimeDurationMs({
+      seconds: 30, // lock timeout
+    }),
+    // 1,
+  );
 
   async withTransaction<T>(
     task: ILocalDBWithTransactionTask<T>,
     options?: ILocalDBWithTransactionOptions,
   ): Promise<T> {
-    if (!options?.readOnly) {
-      this.realm.beginTransaction();
-    }
-    try {
-      const tx = {};
-      const result = await task(tx);
+    const fn = async () => {
+      // Error: The Realm is already in a write transaction
       if (!options?.readOnly) {
-        this.realm.commitTransaction();
+        this.realm.beginTransaction();
       }
-      return result;
-    } catch (error) {
-      if (!options?.readOnly) {
-        this.realm.cancelTransaction();
+      try {
+        const tx = {};
+        const result = await task(tx);
+        // await timerUtils.wait(2000);
+        if (!options?.readOnly) {
+          this.realm.commitTransaction();
+        }
+        return result;
+      } catch (error) {
+        if (!options?.readOnly) {
+          this.realm.cancelTransaction();
+        }
+        throw error;
       }
-      throw error;
+    };
+    if (options?.readOnly) {
+      return fn();
     }
+
+    // write operation should use mutex lock
+    return this.withTransactionMutex.runExclusive(fn);
   }
 
   async getRecordsCount<T extends ELocalDBStoreNames>(
@@ -152,13 +176,21 @@ export class RealmDBAgent extends LocalDbAgentBase implements ILocalDBAgent {
   async txGetAllRecords<T extends ELocalDBStoreNames>(
     params: ILocalDBTxGetAllRecordsParams<T>,
   ): Promise<ILocalDBTxGetAllRecordsResult<T>> {
-    const { name, ids } = params;
+    const { name, ids, limit, offset } = params;
     let objList: Array<{ record: any } | null | undefined> = [];
 
     if (ids) {
-      objList = ids.map((id) => this._getObjectRecordById(name, id));
+      objList = ids.map((id) => this._getObjectRecordById(name, id)) as any;
     } else {
-      objList = this.realm.objects<IRealmDBSchemaMap[T]>(name) as any;
+      const isSlice = isNumber(limit) && isNumber(offset);
+      const hasCreatedAtIndex = storeNameSupportCreatedAt.includes(name);
+      let items = this.realm.objects<IRealmDBSchemaMap[T]>(name);
+      if (isSlice && hasCreatedAtIndex) {
+        items = items
+          .sorted('createdAt', true)
+          .slice(offset, offset + limit) as any;
+      }
+      objList = items as any;
     }
 
     const recordPairs: ILocalDBRecordPair<T>[] = [];
@@ -179,10 +211,12 @@ export class RealmDBAgent extends LocalDbAgentBase implements ILocalDBAgent {
   ): Promise<ILocalDBTxGetRecordByIdResult<T>> {
     const { id, name } = params;
     const obj = this._getObjectRecordById(name, id);
+    // @ts-ignore
     const record = obj?.record;
     if (!record) {
       throw new Error(`record not found: ${name} ${id}`);
     }
+    // eslint-disable-next-line
     return [record as any, obj];
   }
 
@@ -191,6 +225,7 @@ export class RealmDBAgent extends LocalDbAgentBase implements ILocalDBAgent {
   ): Promise<void> {
     const { tx, updater } = params;
     checkIsDefined(tx);
+    resetUtils.checkNotInResetting();
 
     const pairs = await this.buildRecordPairsFromIds(params);
 
@@ -224,7 +259,7 @@ export class RealmDBAgent extends LocalDbAgentBase implements ILocalDBAgent {
     const { name, records, skipIfExists } = params;
     checkIsDefined(params.tx);
     checkIsDefined(params.name);
-
+    resetUtils.checkNotInResetting();
     this.checkSchemaPropertiesDefined({
       name,
       record: records?.[0] || {},
@@ -258,6 +293,7 @@ export class RealmDBAgent extends LocalDbAgentBase implements ILocalDBAgent {
     params: ILocalDBTxRemoveRecordsParams<T>,
   ): Promise<void> {
     checkIsDefined(params.tx);
+    resetUtils.checkNotInResetting();
     const pairs = await this.buildRecordPairsFromIds(params);
 
     this.realm.delete(pairs.map((pair) => pair[1]));

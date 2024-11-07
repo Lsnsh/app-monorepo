@@ -7,6 +7,9 @@ import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/background
 import useDappApproveAction from '@onekeyhq/kit/src/hooks/useDappApproveAction';
 import useDappQuery from '@onekeyhq/kit/src/hooks/useDappQuery';
 import { usePromiseResult } from '@onekeyhq/kit/src/hooks/usePromiseResult';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import uriUtils from '@onekeyhq/shared/src/utils/uriUtils';
+import { EDAppModalPageStatus } from '@onekeyhq/shared/types/dappConnection';
 
 import { WalletConnectAccountTriggerList } from '../../components/DAppAccountList';
 import { DAppRequestedPermissionContent } from '../../components/DAppRequestContent';
@@ -15,6 +18,7 @@ import {
   DAppRequestLayout,
 } from '../../components/DAppRequestLayout';
 import { useRiskDetection } from '../../hooks/useRiskDetection';
+import DappOpenModalPage from '../DappOpenModalPage';
 
 import type {
   IHandleAccountChanged,
@@ -32,15 +36,15 @@ function SessionProposalModal() {
     id: $sourceInfo?.id ?? '',
     closeWindowAfterResolved: true,
   });
-  const { origin } = new URL(proposal.params.proposer.metadata.url);
+  const origin = uriUtils.safeGetWalletConnectOrigin(proposal);
   const favicon = proposal.params.proposer.metadata.icons[0];
   const {
+    showContinueOperate,
     continueOperate,
     setContinueOperate,
-    canContinueOperate,
     riskLevel,
     urlSecurityInfo,
-  } = useRiskDetection({ origin });
+  } = useRiskDetection({ origin: origin ?? '' });
 
   const { result: sessionAccountsInfo } = usePromiseResult(
     async () => serviceWalletConnect.getSessionApprovalAccountInfo(proposal),
@@ -52,12 +56,12 @@ function SessionProposalModal() {
     [num: number]: IHandleAccountChangedParams;
   }>({});
   const confirmDisabled = useMemo(() => {
-    if (!canContinueOperate) return true;
+    if (!continueOperate) return true;
     return false;
-  }, [canContinueOperate]);
+  }, [continueOperate]);
 
   const onApproval = useCallback(
-    async (close: () => void) => {
+    async (close?: (extra?: { flag?: string }) => void) => {
       const accountChangedParamsValues = Object.values(accountChangedParamsMap);
       if (accountChangedParamsValues.length !== sessionAccountsInfo?.length) {
         Toast.success({
@@ -95,13 +99,13 @@ function SessionProposalModal() {
           accountsInfo,
         });
       await dappApprove.resolve({
-        close,
+        close: () => {
+          close?.({ flag: EDAppModalPageStatus.Confirmed });
+        },
         result: { accountsInfo, supportedNamespaces },
       });
       Toast.success({
-        title: intl.formatMessage({
-          id: 'content__connected',
-        }),
+        title: intl.formatMessage({ id: ETranslations.global_connected }),
       });
     },
     [
@@ -140,41 +144,46 @@ function SessionProposalModal() {
   }, [accountChangedParamsMap]);
 
   return (
-    <Page scrollEnabled>
-      <Page.Header headerShown={false} />
-      <Page.Body>
-        <DAppRequestLayout
-          title="Connection Request"
-          origin={origin}
-          urlSecurityInfo={urlSecurityInfo}
-          favicon={favicon}
-        >
-          {Array.isArray(sessionAccountsInfo) ? (
-            <WalletConnectAccountTriggerList
-              sceneUrl={origin}
-              sessionAccountsInfo={sessionAccountsInfo}
-              handleAccountChanged={handleAccountChanged}
-            />
-          ) : null}
-          <DAppRequestedPermissionContent />
-        </DAppRequestLayout>
-      </Page.Body>
-      <Page.Footer>
-        <DAppRequestFooter
-          continueOperate={continueOperate}
-          setContinueOperate={(value) => setContinueOperate(!!value)}
-          onConfirm={onApproval}
-          onCancel={() => {
-            dappApprove.reject();
-          }}
-          confirmButtonProps={{
-            disabled: confirmDisabled,
-          }}
-          showContinueOperateCheckbox={riskLevel !== 'security'}
-          riskLevel={riskLevel}
-        />
-      </Page.Footer>
-    </Page>
+    <DappOpenModalPage dappApprove={dappApprove}>
+      <>
+        <Page.Header headerShown={false} />
+        <Page.Body>
+          <DAppRequestLayout
+            title={intl.formatMessage({
+              id: ETranslations.dapp_connect_connection_request,
+            })}
+            subtitleShown={false}
+            origin={origin ?? ''}
+            urlSecurityInfo={urlSecurityInfo}
+            favicon={favicon}
+          >
+            {Array.isArray(sessionAccountsInfo) ? (
+              <WalletConnectAccountTriggerList
+                sceneUrl={origin ?? ''}
+                sessionAccountsInfo={sessionAccountsInfo}
+                handleAccountChanged={handleAccountChanged}
+              />
+            ) : null}
+            <DAppRequestedPermissionContent />
+          </DAppRequestLayout>
+        </Page.Body>
+        <Page.Footer>
+          <DAppRequestFooter
+            continueOperate={continueOperate}
+            setContinueOperate={(value) => setContinueOperate(!!value)}
+            onConfirm={onApproval}
+            onCancel={() => {
+              dappApprove.reject();
+            }}
+            confirmButtonProps={{
+              disabled: confirmDisabled,
+            }}
+            showContinueOperateCheckbox={showContinueOperate}
+            riskLevel={riskLevel}
+          />
+        </Page.Footer>
+      </>
+    </DappOpenModalPage>
   );
 }
 

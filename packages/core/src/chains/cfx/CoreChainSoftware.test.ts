@@ -1,3 +1,5 @@
+import { NotImplemented } from '@onekeyhq/shared/src/errors';
+
 import coreTestsUtils from '../../../@tests/coreTestsUtils';
 import coreTestsFixtures from '../../../@tests/fixtures/coreTestsFixtures';
 
@@ -43,7 +45,7 @@ const {
         'gasLimit': '0x5208',
         'gasPrice': '1000000000',
         'nonce': 0,
-        'epochHeight': 81203903,
+        'epochHeight': 81_203_903,
         'chainId': 1029,
         'storageLimit': '0',
       },
@@ -117,6 +119,6 @@ describe('CFX Core tests', () => {
   it.skip('signMessage', async () => {
     // const coreApi = new CoreChainHd();
     // coreApi.signMessage
-    throw new Error('Method not implemented.');
+    throw new NotImplemented();
   });
 });

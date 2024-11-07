@@ -1,3 +1,5 @@
+import { isNil } from 'lodash';
+
 import type { SizeTokens } from '@onekeyhq/components';
 import { Icon, Image, SizableText, Stack } from '@onekeyhq/components';
 import type { IDBWallet } from '@onekeyhq/kit-bg/src/dbs/local/types';
@@ -6,26 +8,23 @@ import type { IAllWalletAvatarImageNames } from '@onekeyhq/shared/src/utils/avat
 import { AllWalletAvatarImages } from '@onekeyhq/shared/src/utils/avatarUtils';
 
 import type { IWalletProps } from '../../views/AccountManagerStacks/type';
+import type { IDeviceType } from '@onekeyfe/hd-core';
 
 export type IWalletAvatarBaseProps = {
   size?: SizeTokens;
-  img?: IAllWalletAvatarImageNames; // use img for WalletAvatarEdit
+  img?: IAllWalletAvatarImageNames | IDeviceType; // use img for WalletAvatarEdit
   wallet: IDBWallet | undefined;
 };
 export type IWalletAvatarProps = IWalletAvatarBaseProps & {
   status?: IWalletProps['status'];
-  badge?: number;
+  badge?: number | string;
 };
 
 export function WalletAvatarBase({
   size,
   img,
   wallet,
-}: {
-  size?: SizeTokens;
-  img?: IAllWalletAvatarImageNames; // use img for WalletAvatarEdit
-  wallet: IDBWallet | undefined;
-}) {
+}: IWalletAvatarBaseProps) {
   const theImg = img || wallet?.avatarInfo?.img;
   if (!theImg) {
     return null;
@@ -74,20 +73,19 @@ export function WalletAvatar({
           <Stack borderRadius="$full" w="$2.5" h="$2.5" bg="$bgSuccessStrong" />
         </Stack>
       ) : null}
-      {badge ? (
+      {!isNil(badge) ? (
         <Stack
           position="absolute"
-          bottom={-3}
-          right={0}
-          bg="$bgSubdued"
-          w="$3.5"
-          h="$3.5"
-          alignItems="center"
+          h="$4"
+          px="$0.5"
           justifyContent="center"
+          bottom={-2}
+          right={-1}
+          bg="$bgSubdued"
           borderRadius="$full"
           zIndex="$1"
         >
-          <SizableText size="$bodySmMedium" textAlign="center">
+          <SizableText size="$bodySm" textAlign="center">
             {badge}
           </SizableText>
         </Stack>

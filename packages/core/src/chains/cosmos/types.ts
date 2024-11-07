@@ -1,4 +1,5 @@
-import type { TransactionWrapper } from './sdkCosmos';
+import type { ICosmosStdSignDoc } from './sdkCosmos';
+import type { ICosmosProtoMsgsOrWithAminoMsgs } from './sdkCosmos/ITxMsgBuilder';
 
 export interface ICosmosCoin {
   denom: string;
@@ -21,4 +22,8 @@ export interface ICosmosStdFee {
   feePayer?: string;
 }
 
-export type IEncodedTxCosmos = TransactionWrapper;
+export interface IEncodedTxCosmos {
+  mode: string;
+  msg: ICosmosProtoMsgsOrWithAminoMsgs | undefined;
+  signDoc: ICosmosStdSignDoc | ICosmosSignDocHex;
+}

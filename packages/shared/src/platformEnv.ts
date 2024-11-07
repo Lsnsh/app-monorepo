@@ -1,4 +1,7 @@
+import MobileDetect from 'mobile-detect';
 import { Platform } from 'react-native';
+
+import { isWebInDappMode } from './utils/devModeUtils';
 
 /*
 DO NOT Expose any sensitive data here, this file will be injected to Dapp!!!!
@@ -22,15 +25,18 @@ export type IAppChannel =
   | 'huaweiStore'
   | 'macosARM'
   | 'macosX86'
+  | 'macosStore'
   | 'win'
   | 'winStore'
-  | 'linux';
+  | 'linux'
+  | 'linuxSnap';
 
 export type IPlatformEnv = {
   isNewRouteMode: boolean;
 
   version: string | undefined;
   buildNumber: string | undefined;
+  githubSHA: string | undefined;
   NODE_ENV?: string;
   JEST_WORKER_ID?: string;
 
@@ -47,8 +53,13 @@ export type IPlatformEnv = {
 
   /** running in the browsers */
   isWeb?: boolean;
+  isWebDappMode?: boolean;
   isWebTouchable?: boolean;
   isWebEmbed?: boolean;
+  isWebMobile?: boolean;
+  isWebMobileAndroid?: boolean;
+  isWebMobileIOS?: boolean;
+  isWebSafari?: boolean;
   /** running in the desktop system APP */
   isDesktop?: boolean;
   /** running in the browser extension */
@@ -94,15 +105,18 @@ export type IPlatformEnv = {
   isExtensionBackgroundServiceWorker?: boolean;
   isExtensionOffscreen?: boolean;
   isExtensionUi?: boolean;
+  isExtensionUiPassKey?: boolean;
   isExtensionUiPopup?: boolean;
   isExtensionUiExpandTab?: boolean;
   isExtensionUiSidePanel?: boolean;
   isExtensionUiStandaloneWindow?: boolean;
 
   isRuntimeBrowser?: boolean;
+  isRuntimeMacOSBrowser?: boolean;
   isRuntimeFirefox?: boolean;
   isRuntimeChrome?: boolean;
   isRuntimeEdge?: boolean;
+  isRuntimeBrave?: boolean;
 
   supportAutoUpdate?: boolean;
 
@@ -137,14 +151,16 @@ const {
   isE2E: boolean;
 } = require('./buildTimeEnv.js');
 
-const isDesktopMac = isDesktop && window?.desktopApi?.platform === 'darwin';
-const isDesktopMacArm64 = isDesktopMac && window?.desktopApi?.arch === 'arm64';
-const isDesktopWin = isDesktop && window?.desktopApi?.platform === 'win32';
+const isDesktopMac = isDesktop && globalThis?.desktopApi?.platform === 'darwin';
+const isDesktopMacArm64 =
+  isDesktopMac && globalThis?.desktopApi?.arch === 'arm64';
+const isDesktopWin = isDesktop && globalThis?.desktopApi?.platform === 'win32';
 const isDesktopWinMsStore =
   isDesktopWin && process.env.DESK_CHANNEL === 'ms-store';
-const isDesktopLinux = isDesktop && window?.desktopApi?.platform === 'linux';
+const isDesktopLinux =
+  isDesktop && globalThis?.desktopApi?.platform === 'linux';
 const isDesktopLinuxSnap =
-  isDesktopLinux && window?.desktopApi?.channel === 'snap';
+  isDesktopLinux && globalThis?.desktopApi?.channel === 'snap';
 
 const isNativeIOS = isNative && Platform.OS === 'ios';
 const isNativeIOSStore = isNativeIOS && isProduction;
@@ -157,7 +173,7 @@ const isNativeAndroidGooglePlay =
   isNativeAndroid && process.env.ANDROID_CHANNEL === 'google';
 const isNativeAndroidHuawei =
   isNativeAndroid && process.env.ANDROID_CHANNEL === 'huawei';
-const isMas = isDesktop && window?.desktopApi?.isMas;
+const isMas = isDesktop && globalThis?.desktopApi?.isMas;
 
 // for platform building by file extension
 const getAppPlatform = (): IAppPlatform | undefined => {
@@ -191,12 +207,16 @@ const getAppChannel = (): IAppChannel | undefined => {
 
   if (isDesktopWinMsStore) return 'winStore';
   if (isDesktopWin) return 'win';
+  if (isMas) return 'macosStore';
   if (isDesktopMacArm64) return 'macosARM';
   if (isDesktopMac) return 'macosX86';
+  if (isDesktopLinuxSnap) return 'linuxSnap';
   if (isDesktopLinux) return 'linux';
 };
 
-const isRuntimeBrowser: boolean = typeof window !== 'undefined' && !isNative;
+const isRuntimeBrowser: boolean =
+  // eslint-disable-next-line unicorn/prefer-global-this
+  typeof window !== 'undefined' && !isNative;
 
 // @ts-ignore
 const isRuntimeFirefox: boolean = typeof InstallTrigger !== 'undefined';
@@ -205,13 +225,25 @@ const checkIsRuntimeEdge = (): boolean => {
   if (!isRuntimeBrowser) {
     return false;
   }
-  const isChromium = window.chrome;
-  const winNav = window.navigator as typeof window.navigator | undefined;
+  const isChromium = globalThis.chrome;
+  const winNav = globalThis.navigator as
+    | typeof globalThis.navigator
+    | undefined;
   const isIEEdge = winNav ? winNav.userAgent.indexOf('Edg') > -1 : false;
 
   if (isChromium && isIEEdge === true) return true;
 
   return false;
+};
+
+const checkIsRuntimeBrave = (): boolean => {
+  if (!isRuntimeBrowser) {
+    return false;
+  }
+  // @ts-ignore
+  const { brave } = navigator;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
+  return (brave && brave?.isBrave?.name === 'isBrave') || false;
 };
 
 const checkIsRuntimeChrome = (): boolean => {
@@ -225,11 +257,13 @@ const checkIsRuntimeChrome = (): boolean => {
   // and new IE Edge outputs to true now for window.chrome
   // and if not iOS Chrome check
   // so use the below updated condition
-  const isChromium = window.chrome;
-  const winNav = window.navigator as typeof window.navigator | undefined;
+  const isChromium = globalThis.chrome;
+  const winNav = globalThis.navigator as
+    | typeof globalThis.navigator
+    | undefined;
   const vendorName = winNav ? winNav.vendor : '';
   // @ts-ignore
-  const isOpera = typeof window.opr !== 'undefined';
+  const isOpera = typeof globalThis.opr !== 'undefined';
   const isIEEdge = winNav ? winNav.userAgent.indexOf('Edg') > -1 : false;
   const isIOSChrome = /CriOS/.exec(winNav ? winNav.userAgent : '');
 
@@ -251,6 +285,24 @@ const checkIsRuntimeChrome = (): boolean => {
   return false;
 };
 
+const isMacPlatform = (platform: string): boolean =>
+  platform ? platform.includes('mac') || platform.includes('darwin') : false;
+const checkIsRuntimeMacOSBrowser = (): boolean => {
+  if (!isRuntimeBrowser) {
+    return false;
+  }
+  if (typeof navigator !== 'undefined') {
+    const platform =
+      navigator.platform?.toLowerCase() ||
+      (
+        navigator as { userAgentData?: { platform: string } }
+      ).userAgentData?.platform?.toLowerCase() ||
+      '';
+    return isMacPlatform(platform);
+  }
+  return false;
+};
+
 const getBrowserInfo = () => {
   const browserInfo = {
     name: 'unknown',
@@ -258,7 +310,7 @@ const getBrowserInfo = () => {
   };
   if (isRuntimeBrowser) {
     try {
-      const userAgent = window.navigator.userAgent.toLowerCase();
+      const userAgent = globalThis.navigator.userAgent.toLowerCase();
 
       if (userAgent.indexOf('firefox') > -1) {
         browserInfo.name = 'Firefox';
@@ -289,25 +341,51 @@ const getBrowserInfo = () => {
 
 const isWebTouchable =
   isRuntimeBrowser &&
-  ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  // eslint-disable-next-line unicorn/prefer-global-this
+  ('ontouchstart' in globalThis || navigator.maxTouchPoints > 0);
+
+let isWebMobile = false;
+let isWebMobileAndroid = false;
+let isWebMobileIOS = false;
+let isWebSafari = false;
+let isWebDappMode = false;
+(function () {
+  if (!isWeb) {
+    return;
+  }
+  // https://hgoebl.github.io/mobile-detect.js/doc/MobileDetect.html
+  const md = new MobileDetect(globalThis.navigator?.userAgent);
+  const mobileInfo = md.mobile();
+  isWebMobile = Boolean(mobileInfo);
+  const os = md.os();
+  const ua = md.userAgent();
+
+  isWebMobileAndroid = os === 'AndroidOS';
+  isWebMobileIOS = os === 'iOS' || os === 'iPadOS';
+  isWebSafari =
+    ua === 'Safari' || globalThis.navigator?.userAgent?.includes('Safari');
+  isWebDappMode = isWebInDappMode();
+})();
 
 const isRuntimeChrome = checkIsRuntimeChrome();
 const isRuntimeEdge = checkIsRuntimeEdge();
+const isRuntimeBrave = checkIsRuntimeBrave();
+const isRuntimeMacOSBrowser = isDesktopMac || checkIsRuntimeMacOSBrowser();
 
 // Ext manifest v2 background
 export const isExtensionBackgroundHtml: boolean =
   isExtension &&
   isRuntimeBrowser &&
-  window.location.pathname.startsWith('/background.html');
+  globalThis.location.pathname.startsWith('/background.html');
 
 // Ext manifest v3 background
 export const isExtensionBackgroundServiceWorker: boolean =
   isExtension &&
   !isRuntimeBrowser &&
   // @ts-ignore
-  Boolean(global.serviceWorker) &&
+  Boolean(globalThis.serviceWorker) &&
   // @ts-ignore
-  global.serviceWorker instanceof ServiceWorker;
+  globalThis.serviceWorker instanceof ServiceWorker;
 
 export const isExtensionBackground: boolean =
   isExtensionBackgroundHtml || isExtensionBackgroundServiceWorker;
@@ -315,25 +393,30 @@ export const isExtensionBackground: boolean =
 const isExtensionOffscreen: boolean =
   isExtension &&
   isRuntimeBrowser &&
-  window.location.pathname.startsWith('/offscreen.html');
+  globalThis.location.pathname.startsWith('/offscreen.html');
 
 export const isExtensionUi: boolean =
   isExtension &&
   isRuntimeBrowser &&
-  window.location.pathname.startsWith('/ui-');
+  globalThis.location.pathname.startsWith('/ui-');
+
+export const isExtensionUiPassKey: boolean =
+  isExtensionUi && globalThis.location.pathname.startsWith('/ui-passkey.html');
 
 export const isExtensionUiPopup: boolean =
-  isExtensionUi && window.location.pathname.startsWith('/ui-popup.html');
+  isExtensionUi && globalThis.location.pathname.startsWith('/ui-popup.html');
 
 export const isExtensionUiExpandTab: boolean =
-  isExtensionUi && window.location.pathname.startsWith('/ui-expand-tab.html');
+  isExtensionUi &&
+  globalThis.location.pathname.startsWith('/ui-expand-tab.html');
 
 export const isExtensionUiSidePanel: boolean =
-  isExtensionUi && window.location.pathname.startsWith('/ui-side-panel.html');
+  isExtensionUi &&
+  globalThis.location.pathname.startsWith('/ui-side-panel.html');
 
 export const isExtensionUiStandaloneWindow: boolean =
   isExtensionUi &&
-  window.location.pathname.startsWith('/ui-standalone-window.html');
+  globalThis.location.pathname.startsWith('/ui-standalone-window.html');
 
 export const isManifestV3: boolean =
   // TODO firefox check v3
@@ -349,6 +432,7 @@ const platformEnv: IPlatformEnv = {
 
   version: process.env.VERSION,
   buildNumber: process.env.BUILD_NUMBER,
+  githubSHA: process.env.GITHUB_SHA,
 
   isJest,
 
@@ -359,8 +443,13 @@ const platformEnv: IPlatformEnv = {
   isE2E,
 
   isWeb,
+  isWebDappMode,
   isWebTouchable,
   isWebEmbed,
+  isWebMobile,
+  isWebMobileAndroid,
+  isWebMobileIOS,
+  isWebSafari,
   isDesktop,
   isExtension,
   isNative,
@@ -395,6 +484,7 @@ const platformEnv: IPlatformEnv = {
   isExtensionBackgroundHtml,
   isExtensionBackgroundServiceWorker,
   isExtensionOffscreen,
+  isExtensionUiPassKey,
   isExtensionUi,
   isExtensionUiPopup,
   isExtensionUiExpandTab,
@@ -403,16 +493,18 @@ const platformEnv: IPlatformEnv = {
   isExtFirefoxUiPopup: isExtFirefox && isExtensionUiPopup,
 
   isRuntimeBrowser,
+  isRuntimeMacOSBrowser,
   isRuntimeFirefox,
   isRuntimeChrome,
   isRuntimeEdge,
+  isRuntimeBrave,
 
   supportAutoUpdate,
   isAppleStoreEnv,
 };
 
 if (isDev) {
-  global.$$platformEnv = platformEnv;
+  globalThis.$$platformEnv = platformEnv;
 }
 
 /*

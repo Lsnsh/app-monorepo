@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo } from 'react';
 
+import { manipulateAsync } from 'expo-image-manipulator';
 import { useIntl } from 'react-intl';
 import { StyleSheet } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
 import type { IStackProps } from '@onekeyhq/components';
-import { IconButton, SizableText, Stack, Toast } from '@onekeyhq/components';
+import {
+  IconButton,
+  SizableText,
+  Stack,
+  Toast,
+  useClipboard,
+} from '@onekeyhq/components';
 import type { IPageNavigationProp } from '@onekeyhq/components/src/layouts/Navigation';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
@@ -18,6 +25,7 @@ import {
   EAppEventBusNames,
   appEventBus,
 } from '@onekeyhq/shared/src/eventBus/appEventBus';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type { IDiscoveryModalParamList } from '@onekeyhq/shared/src/routes';
 import {
   EDiscoveryModalRoutes,
@@ -26,7 +34,7 @@ import {
 import { openUrlExternal } from '@onekeyhq/shared/src/utils/openUrlUtils';
 
 import { BROWSER_BOTTOM_BAR_HEIGHT } from '../../config/Animation.constants';
-import { THUMB_WIDTH } from '../../config/TabList.constants';
+import { THUMB_CROP_SIZE } from '../../config/TabList.constants';
 import useBrowserOptionsAction from '../../hooks/useBrowserOptionsAction';
 import {
   useDisabledAddedNewTab,
@@ -96,16 +104,24 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
         captureRef(captureViewRefs[id ?? ''], {
           format: 'jpg',
           quality: 0.2,
-          width: THUMB_WIDTH,
-          height: THUMB_WIDTH,
         })
           .then(async (imageUri) => {
+            const manipulateValue = await manipulateAsync(imageUri, [
+              {
+                crop: {
+                  originX: 0,
+                  originY: 0,
+                  width: THUMB_CROP_SIZE,
+                  height: THUMB_CROP_SIZE,
+                },
+              },
+            ]);
             const path = getScreenshotPath(`${id}-${Date.now()}.jpg`);
             setWebTabData({
               id,
               thumbnail: path,
             });
-            void saveScreenshot(imageUri, path);
+            void saveScreenshot(manipulateValue.uri, path);
             resolve(true);
           })
           .catch((e) => {
@@ -133,8 +149,8 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
     if (disabledAddedNewTab) {
       Toast.message({
         title: intl.formatMessage(
-          { id: 'msg__tab_has_reached_the_maximum_limit_of_str' },
-          { 0: '20' },
+          { id: ETranslations.explore_toast_tab_limit_reached },
+          { number: '20' },
         ),
       });
       return;
@@ -146,7 +162,7 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
     } catch (e) {
       console.error(e);
     }
-    navigation.pushFullModal(EModalRoutes.DiscoveryModal, {
+    navigation.pushModal(EModalRoutes.DiscoveryModal, {
       screen: EDiscoveryModalRoutes.SearchModal,
     });
   }, [disabledAddedNewTab, navigation, displayHomePage, takeScreenshot, intl]);
@@ -160,8 +176,12 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
       }
       Toast.success({
         title: isBookmark
-          ? intl.formatMessage({ id: 'msg__bookmark_added' })
-          : intl.formatMessage({ id: 'msg__bookmark_removed' }),
+          ? intl.formatMessage({
+              id: ETranslations.explore_toast_bookmark_added,
+            })
+          : intl.formatMessage({
+              id: ETranslations.explore_toast_bookmark_removed,
+            }),
       });
     },
     [intl, addBrowserBookmark, removeBrowserBookmark, tab?.url, tab?.title],
@@ -172,8 +192,8 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
       setPinnedTab({ id, pinned });
       Toast.success({
         title: pinned
-          ? intl.formatMessage({ id: 'msg__pinned' })
-          : intl.formatMessage({ id: 'msg__unpinned' }),
+          ? intl.formatMessage({ id: ETranslations.explore_toast_pinned })
+          : intl.formatMessage({ id: ETranslations.explore_toast_unpinned }),
       });
     },
     [setPinnedTab, id, intl],
@@ -183,7 +203,7 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
     // a workaround to fix this issue
     //  that remove page includes Popover from screen before closing popover
     setTimeout(() => {
-      closeWebTab(id);
+      closeWebTab({ tabId: id, entry: 'Menu' });
       setCurrentWebTab(null);
     });
   }, [closeWebTab, setCurrentWebTab, id]);
@@ -203,6 +223,11 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
     handleShareUrl(tab?.url ?? '');
   }, [tab?.url, handleShareUrl]);
 
+  const { copyText } = useClipboard();
+  const onCopyUrl = useCallback(() => {
+    copyText(tab?.url);
+  }, [tab?.url, copyText]);
+
   useEffect(() => {
     const fn = () => {
       setTimeout(() => {
@@ -219,6 +244,7 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
     await backgroundApiProxy.serviceDApp.disconnectWebsite({
       origin,
       storageType: 'injectedProvider',
+      entry: 'Browser',
     });
     void refreshConnectState();
   }, [origin, refreshConnectState]);
@@ -306,6 +332,7 @@ function MobileBrowserBottomBar({ id, ...rest }: IMobileBrowserBottomBarProps) {
             webviewRefs[id]?.reload();
           }}
           onShare={onShare}
+          onCopyUrl={onCopyUrl}
           isPinned={tab?.isPinned ?? false}
           onPinnedPress={handlePinTab}
           onBrowserOpen={() => {

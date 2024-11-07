@@ -8,9 +8,14 @@ import { globalAtom } from '../utils';
 
 export enum EJotaiContextStoreNames {
   accountSelector = 'accountSelector',
+  urlAccountHomeTokenList = 'urlAccountHomeTokenList',
   homeTokenList = 'homeTokenList',
   discoveryBrowser = 'discoveryBrowser',
   swap = 'swap',
+  swapModal = 'swapModal',
+  marketWatchList = 'marketWatchList',
+  universalSearch = 'universalSearch',
+  earn = 'earn',
 }
 export type IJotaiContextStoreData = {
   storeName: EJotaiContextStoreNames;

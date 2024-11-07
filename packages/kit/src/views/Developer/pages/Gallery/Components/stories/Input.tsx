@@ -11,8 +11,14 @@ const InputGallery = () => (
       {
         title: 'Sizes',
         element: (
-          <Stack space="$4">
-            <Input size="small" placeholder="Placeholder" />
+          <Stack gap="$4">
+            <Input
+              size="small"
+              placeholder="Placeholder"
+              onPaste={() => {
+                alert('onPaste');
+              }}
+            />
             <Input size="medium" placeholder="Placeholder" />
             <Input size="large" placeholder="Placeholder" />
           </Stack>
@@ -21,7 +27,7 @@ const InputGallery = () => (
       {
         title: 'Input with icon',
         element: (
-          <Stack space="$4">
+          <Stack gap="$4">
             <Input
               size="small"
               placeholder="Placeholder"
@@ -43,7 +49,7 @@ const InputGallery = () => (
       {
         title: 'Input with actions',
         element: (
-          <Stack space="$4">
+          <Stack gap="$4">
             <Input
               size="small"
               placeholder="Placeholder"
@@ -168,7 +174,7 @@ const InputGallery = () => (
       {
         title: 'States',
         element: (
-          <Stack space="$4">
+          <Stack gap="$4">
             <Input
               size="medium"
               value="Disabled"

@@ -1,19 +1,24 @@
 import { IInjectedProviderNames } from '@onekeyfe/cross-inpage-provider-types';
 
-// import ProviderAlgo from './ProviderAlgo';
-// import ProviderApiAptos from './ProviderApiAptos';
+import ProviderApiAlgo from './ProviderApiAlgo';
+import ProviderApiAlph from './ProviderApiAlph';
+import ProviderApiAptos from './ProviderApiAptos';
 import ProviderApiBtc from './ProviderApiBtc';
-// import ProviderApiCardano from './ProviderApiCardano';
-// import ProviderApiConflux from './ProviderApiConflux';
-// import ProviderApiCosmos from './ProviderApiCosmos';
+import ProviderApiCardano from './ProviderApiCardano';
+import ProviderApiConflux from './ProviderApiConflux';
+import ProviderApiCosmos from './ProviderApiCosmos';
 import ProviderApiEthereum from './ProviderApiEthereum';
-// import ProviderApiNear from './ProviderApiNear';
-// import ProviderApiPolkadot from './ProviderApiPolkadot';
+import ProviderApiNear from './ProviderApiNear';
+import ProviderApiNostr from './ProviderApiNostr';
+import ProviderApiPolkadot from './ProviderApiPolkadot';
 import ProviderApiPrivate from './ProviderApiPrivate';
-// import ProviderApiSolana from './ProviderApiSolana';
+// import ProviderApiPrivateExternalAccount from './ProviderApiPrivateExternalAccount';
+import ProviderApiScdo from './ProviderApiScdo';
+import ProviderApiSolana from './ProviderApiSolana';
 // import ProviderApiStarcoin from './ProviderApiStarcoin';
-// import ProviderApiSui from './ProviderApiSui';
-// import ProviderApiTron from './ProviderApiTron';
+import ProviderApiSui from './ProviderApiSui';
+import ProviderApiTon from './ProviderApiTon';
+import ProviderApiTron from './ProviderApiTron';
 import ProviderApiWebln from './ProviderApiWebln';
 
 import type ProviderApiBase from './ProviderApiBase';
@@ -34,43 +39,57 @@ function createBackgroundProviders({
     [IInjectedProviderNames.ethereum]: new ProviderApiEthereum({
       backgroundApi,
     }),
-    // [IInjectedProviderNames.solana]: new ProviderApiSolana({
-    //   backgroundApi,
-    // }),
+    [IInjectedProviderNames.solana]: new ProviderApiSolana({
+      backgroundApi,
+    }),
     // [IInjectedProviderNames.starcoin]: new ProviderApiStarcoin({
     //   backgroundApi,
     // }),
-    // [IInjectedProviderNames.near]: new ProviderApiNear({
-    //   backgroundApi,
-    // }),
-    // [IInjectedProviderNames.aptos]: new ProviderApiAptos({
-    //   backgroundApi,
-    // }),
-    // [IInjectedProviderNames.conflux]: new ProviderApiConflux({
-    //   backgroundApi,
-    // }),
-    // [IInjectedProviderNames.tron]: new ProviderApiTron({
-    //   backgroundApi,
-    // }),
-    // [IInjectedProviderNames.algo]: new ProviderAlgo({
-    //   backgroundApi,
-    // }),
-    // [IInjectedProviderNames.sui]: new ProviderApiSui({
-    //   backgroundApi,
-    // }),
-    // [IInjectedProviderNames.cardano]: new ProviderApiCardano({
-    //   backgroundApi,
-    // }),
-    // [IInjectedProviderNames.cosmos]: new ProviderApiCosmos({
-    //   backgroundApi,
-    // }),
-    // [IInjectedProviderNames.polkadot]: new ProviderApiPolkadot({
-    //   backgroundApi,
-    // }),
+    [IInjectedProviderNames.near]: new ProviderApiNear({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.aptos]: new ProviderApiAptos({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.conflux]: new ProviderApiConflux({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.tron]: new ProviderApiTron({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.algo]: new ProviderApiAlgo({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.sui]: new ProviderApiSui({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.ton]: new ProviderApiTon({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.alephium]: new ProviderApiAlph({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.scdo]: new ProviderApiScdo({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.cardano]: new ProviderApiCardano({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.cosmos]: new ProviderApiCosmos({
+      backgroundApi,
+    }),
+    [IInjectedProviderNames.polkadot]: new ProviderApiPolkadot({
+      backgroundApi,
+    }),
     [IInjectedProviderNames.webln]: new ProviderApiWebln({ backgroundApi }),
+    [IInjectedProviderNames.nostr]: new ProviderApiNostr({ backgroundApi }),
     [IInjectedProviderNames.btc]: new ProviderApiBtc({
       backgroundApi,
     }),
+    // [IInjectedProviderNames.$privateExternalAccount]:
+    //   new ProviderApiPrivateExternalAccount({
+    //     backgroundApi,
+    //   }),
     // near
     // eslint-disable-next-line spellcheck/spell-checker
     // sollet

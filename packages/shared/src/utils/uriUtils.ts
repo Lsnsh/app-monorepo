@@ -1,11 +1,18 @@
 import punycode from 'punycode';
 
+import type { IUrlValue } from '@onekeyhq/kit-bg/src/services/ServiceScanQRCode/utils/parseQRCode/type';
+
+import { ONEKEY_APP_DEEP_LINK_NAME } from '../consts/deeplinkConsts';
 import {
   PROTOCOLS_SUPPORTED_TO_OPEN,
   VALID_DEEP_LINK,
 } from '../consts/urlProtocolConsts';
 
-import type { IServerNetwork } from '../../types';
+import type {
+  EOneKeyDeepLinkPath,
+  IEOneKeyDeepLinkParams,
+} from '../consts/deeplinkConsts';
+import type { Web3WalletTypes } from '@walletconnect/web3wallet';
 
 const DOMAIN_REGEXP =
   /(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]/;
@@ -42,7 +49,7 @@ function safeParseURL(url: string): URL | null {
 
 function isProtocolSupportedOpenInApp(dappUrl: string) {
   return PROTOCOLS_SUPPORTED_TO_OPEN.some((protocol) =>
-    dappUrl.toLowerCase().startsWith(`${protocol.toLowerCase()}//`),
+    dappUrl.toLowerCase().startsWith(`${protocol.toLowerCase()}`),
   );
 }
 
@@ -82,7 +89,7 @@ export function checkOneKeyCardGoogleOauthUrl({
   ].includes(origin);
 }
 
-export function parseUrl(url: string) {
+export function parseUrl(url: string): IUrlValue | null {
   try {
     let formatUrl = url;
     if (url.includes('&')) {
@@ -97,6 +104,9 @@ export function parseUrl(url: string) {
     const urlObject = new URL(formatUrl);
     return {
       url,
+      hostname: urlObject.hostname,
+      origin: urlObject.origin,
+      pathname: urlObject.pathname,
       urlSchema: urlObject.protocol.replace(/(:)$/, ''),
       urlPathList: `${urlObject.hostname}${urlObject.pathname}`
         .replace(/^\/\//, '')
@@ -105,7 +115,14 @@ export function parseUrl(url: string) {
       urlParamList: Array.from(urlObject.searchParams.entries()).reduce<{
         [key: string]: any;
       }>((paramList, [paramKey, paramValue]) => {
-        paramList[paramKey] = paramValue;
+        if (paramKey in paramList) {
+          if (!Array.isArray(paramList[paramKey])) {
+            paramList[paramKey] = [paramList[paramKey]];
+          }
+          (paramList[paramKey] as Array<any>).push(paramValue);
+        } else {
+          paramList[paramKey] = paramValue;
+        }
         return paramList;
       }, {}),
     };
@@ -116,37 +133,12 @@ export function parseUrl(url: string) {
 
 export const checkIsDomain = (domain: string) => DOMAIN_REGEXP.test(domain);
 
-export function buildExplorerAddressUrl({
-  network,
-  address,
-}: {
-  network: IServerNetwork | undefined;
-  address: string | undefined;
-}) {
-  if (!network || !address) return '';
+// check the ens format 元宇宙.bnb / diamondgs198.x
+export const addressIsEnsFormat = (address: string) => {
+  const parts = address.split('.');
+  return parts.length > 1 && parts.every((o) => Boolean(o) && o === o.trim());
+};
 
-  const addressUrl = network.explorers[0]?.address;
-
-  if (!addressUrl) return '';
-
-  return addressUrl.replace('{address}', address);
-}
-
-export function buildTransactionDetailsUrl({
-  network,
-  txid,
-}: {
-  network: IServerNetwork | undefined;
-  txid: string | undefined;
-}) {
-  if (!network || !txid) return '';
-
-  const transactionUrl = network.explorers[0]?.transaction;
-
-  if (!transactionUrl) return '';
-
-  return transactionUrl.replace('{transaction}', txid);
-}
 export function isValidDeepLink(url: string) {
   return VALID_DEEP_LINK.some((protocol) =>
     url.toLowerCase().startsWith(`${protocol.toLowerCase()}//`),
@@ -180,6 +172,80 @@ export const containsPunycode = (url: string) => {
   return hostname !== unicodeHostname;
 };
 
+function buildUrl({
+  protocol = '',
+  hostname = '',
+  path = '',
+  query = {},
+}: {
+  protocol?: string;
+  hostname?: string;
+  path?: string;
+  query?: Record<string, string>;
+}) {
+  // eslint-disable-next-line no-param-reassign
+  protocol = protocol.replace(/:+$/, '');
+  // eslint-disable-next-line no-param-reassign
+  protocol = protocol.replace(/^\/+/, '');
+  // eslint-disable-next-line no-param-reassign
+  protocol = protocol.replace(/\/+$/, '');
+
+  // eslint-disable-next-line no-param-reassign
+  hostname = hostname.replace(/^\/+/, '');
+  // eslint-disable-next-line no-param-reassign
+  hostname = hostname.replace(/\/+$/, '');
+
+  // eslint-disable-next-line no-param-reassign
+  path = path.replace(/^\/+/, '');
+  // eslint-disable-next-line no-param-reassign
+  path = path.replace(/\/+$/, '');
+
+  const url = new URL(
+    `${protocol}://${[hostname, path].filter(Boolean).join('/')}`,
+  );
+  if (query) {
+    url.search = new URLSearchParams(query).toString();
+  }
+  return url.toString();
+}
+
+function buildDeepLinkUrl<T extends EOneKeyDeepLinkPath>({
+  path,
+  query,
+}: {
+  path: T;
+  query?: IEOneKeyDeepLinkParams[T];
+}) {
+  return buildUrl({
+    protocol: ONEKEY_APP_DEEP_LINK_NAME,
+    path,
+    query,
+  });
+}
+
+const NameToUrlMapForInvalidDapp: Record<string, string> = {
+  'Algorand Governance--Governance platform for Algorand':
+    'https://governance.algorand.foundation',
+};
+function safeGetWalletConnectOrigin(proposal: Web3WalletTypes.SessionProposal) {
+  try {
+    const { origin } = new URL(proposal.params.proposer.metadata.url);
+    return origin;
+  } catch (err) {
+    try {
+      const key = `${proposal.params.proposer.metadata.name}--${proposal.params.proposer.metadata.description}`;
+      const nameToUrl = NameToUrlMapForInvalidDapp[key];
+      if (nameToUrl) {
+        const { origin } = new URL(nameToUrl);
+        return origin;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+}
+
 export default {
   getOriginFromUrl,
   getHostNameFromUrl,
@@ -188,4 +254,9 @@ export default {
   EDAppOpenActionEnum,
   validateUrl,
   containsPunycode,
+  buildUrl,
+  buildDeepLinkUrl,
+  safeGetWalletConnectOrigin,
+  parseUrl,
+  safeParseURL,
 };

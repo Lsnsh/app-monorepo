@@ -1,25 +1,65 @@
-import { type FC, useMemo } from 'react';
+import { type FC, useEffect, useMemo } from 'react';
 import { useCallback, useState } from 'react';
 
+import { groupBy } from 'lodash';
 import { useIntl } from 'react-intl';
 
 import {
-  ActionList,
   Empty,
   IconButton,
+  SearchBar,
   SectionList,
   SizableText,
   Stack,
-  useClipboard,
+  useMedia,
 } from '@onekeyhq/components';
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
 import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import type { IFuseResultMatch } from '@onekeyhq/shared/src/modules3rdParty/fuse';
+import { buildFuse } from '@onekeyhq/shared/src/modules3rdParty/fuse';
 import { EModalAddressBookRoutes } from '@onekeyhq/shared/src/routes';
 
-import type { IAddressItem, ISectionItem } from '../type';
+import { AddressBookSectionList } from './AddressBookSectionList';
+import { ListItemIconButton } from './ListItemIconButton';
+
+import type { IAddressItem, IAddressNetworkItem } from '../type';
+
+type IAddressNetworkExtendMatch = IAddressNetworkItem & {
+  addressMatch?: IFuseResultMatch;
+  nameMatch?: IFuseResultMatch;
+};
+
+export type ISectionItem = {
+  title: string;
+  data: IAddressNetworkExtendMatch[];
+};
+
+const getSectionTitle = (item: IAddressNetworkItem) =>
+  item.networkId.startsWith('evm--') ? 'EVM' : item.network.name;
+
+function getSectionIndex(item: ISectionItem): number {
+  if (item.title.toLowerCase() === 'bitcoin') {
+    return -10;
+  }
+  if (item.title.toLowerCase() === 'evm') {
+    return -9;
+  }
+  return item.data[0]?.createdAt ?? 0;
+}
+
+const buildSections = (items: IAddressNetworkExtendMatch[]) => {
+  const result = groupBy(items, getSectionTitle);
+  return (
+    Object.entries(result)
+      .map((o) => ({ title: o[0], data: o[1] }))
+      // pin up btc, evm to top, other impl sort by create time
+      .sort((a, b) => getSectionIndex(a) - getSectionIndex(b))
+  );
+};
 
 type IRenderAddressItemProps = {
-  item: IAddressItem;
+  item: IAddressNetworkExtendMatch;
   onPress?: (item: IAddressItem) => void;
   showActions?: boolean;
 };
@@ -29,9 +69,6 @@ const RenderAddressBookItem: FC<IRenderAddressItemProps> = ({
   onPress,
   showActions,
 }) => {
-  const intl = useIntl();
-  const { copyText } = useClipboard();
-  const appNavigation = useAppNavigation();
   const renderAvatar = useCallback(
     () => (
       <Stack
@@ -53,47 +90,14 @@ const RenderAddressBookItem: FC<IRenderAddressItemProps> = ({
   return (
     <ListItem
       title={item.name}
+      titleMatch={item.nameMatch}
       subtitle={item.address}
+      subTitleMatch={item.addressMatch}
       renderAvatar={renderAvatar}
       onPress={() => onPress?.(item)}
       testID={`address-item-${item.address || ''}`}
     >
-      {showActions ? (
-        <ActionList
-          title={intl.formatMessage({ id: 'title__menu' })}
-          items={[
-            {
-              label: intl.formatMessage({ id: 'action__copy' }),
-              icon: 'Copy1Outline',
-              onPress: async () => {
-                copyText(item.address);
-              },
-              testID: `address-menu-copy-${item.address ?? ''}`,
-            },
-            {
-              label: intl.formatMessage({ id: 'action__edit' }),
-              icon: 'PencilOutline',
-              onPress: () => {
-                if (item.id) {
-                  appNavigation.push(EModalAddressBookRoutes.EditItemModal, {
-                    id: item.id,
-                    name: item.name,
-                    address: item.address,
-                    networkId: item.networkId,
-                  });
-                }
-              },
-              testID: `address-menu-edit-${item.address ?? ''}`,
-            },
-          ]}
-          renderTrigger={
-            <ListItem.IconButton
-              icon="DotVerSolid"
-              testID={`address-menu-${item.address || ''}`}
-            />
-          }
-        />
-      ) : null}
+      {showActions ? <ListItemIconButton item={item} /> : null}
     </ListItem>
   );
 };
@@ -110,13 +114,19 @@ const RenderEmptyAddressBook: FC<IRenderEmptyAddressBookProps> = ({
   return (
     <Empty
       icon="SearchOutline"
-      title={intl.formatMessage({ id: 'content__no_results' })}
-      description="You haven't added any address yet"
+      title={intl.formatMessage({
+        id: ETranslations.address_book_no_results_title,
+      })}
+      description={intl.formatMessage({
+        id: ETranslations.address_book_empty_description,
+      })}
       buttonProps={
         hideAddItemButton
           ? undefined
           : {
-              children: intl.formatMessage({ id: 'action__add' }),
+              children: intl.formatMessage({
+                id: ETranslations.address_book_add_address_title,
+              }),
               onPress: () => {
                 navigation.push(EModalAddressBookRoutes.AddItemModal);
               },
@@ -132,30 +142,32 @@ const RenderNoSearchResult = () => {
   return (
     <Empty
       icon="SearchOutline"
-      title={intl.formatMessage({ id: 'content__no_results' })}
-      description="No match found for your search. Try to add this contact."
+      title={intl.formatMessage({
+        id: ETranslations.address_book_no_results_title,
+      })}
+      description={intl.formatMessage({
+        id: ETranslations.address_book_no_results_description,
+      })}
       testID="address-book-search-empty"
     />
   );
 };
 
 type IAddressBookListContentProps = {
-  sections: ISectionItem[];
-  onContentSizeChange?: ((w: number, h: number) => void) | undefined;
+  items: IAddressNetworkItem[];
   showActions?: boolean;
   onPressItem?: (item: IAddressItem) => void;
-  searchKey: string;
   hideEmptyAddButton?: boolean;
 };
 
 export const AddressBookListContent = ({
-  sections,
-  onContentSizeChange,
+  items,
   showActions,
   onPressItem,
-  searchKey,
   hideEmptyAddButton,
 }: IAddressBookListContentProps) => {
+  const intl = useIntl();
+  const [searchKey, setSearchKey] = useState('');
   const [foldItems, setFoldItems] = useState<string[]>([]);
   const onToggle = useCallback(
     (o: string) =>
@@ -168,22 +180,25 @@ export const AddressBookListContent = ({
     [],
   );
 
+  useEffect(() => {
+    setFoldItems([]);
+  }, [searchKey]);
+
   const renderSectionHeader = useCallback(
     ({
       section,
     }: {
       section: {
         title: string;
-        data: IAddressItem[];
-        index: number;
+        data: IAddressNetworkExtendMatch[];
         isFold?: boolean;
       };
-    }) => (
-      <SectionList.SectionHeader
-        title={section.title.toUpperCase()}
-        justifyContent="space-between"
-      >
-        {!searchKey ? (
+    }) =>
+      !searchKey ? (
+        <SectionList.SectionHeader
+          title={section.title.toUpperCase()}
+          justifyContent="space-between"
+        >
           <IconButton
             size="small"
             variant="tertiary"
@@ -197,14 +212,13 @@ export const AddressBookListContent = ({
             }
             onPress={() => onToggle(section.title)}
           />
-        ) : null}
-      </SectionList.SectionHeader>
-    ),
+        </SectionList.SectionHeader>
+      ) : null,
     [onToggle, searchKey],
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: IAddressItem }) => (
+    ({ item }: { item: IAddressNetworkExtendMatch }) => (
       <RenderAddressBookItem
         item={item}
         showActions={showActions}
@@ -214,14 +228,38 @@ export const AddressBookListContent = ({
     [showActions, onPressItem],
   );
   const memoSections = useMemo(() => {
+    let sections: ISectionItem[] = [];
     if (searchKey) {
-      const result = sections.map((item) => {
-        const data = item.data.filter(
-          (o) => o.address.includes(searchKey) || o.name.includes(searchKey),
-        );
-        return { title: item.title, data };
+      const exactMatch = (match: IFuseResultMatch) => {
+        const result =
+          match.indices.length === 1 &&
+          match.value &&
+          match.indices[0][1] - match.indices[0][0] === match.value.length - 1;
+        return result;
+      };
+      const fuse = buildFuse(items, {
+        keys: ['address', 'name'],
       });
-      return result.filter((o) => o.data.length > 0);
+      let itemSearched = fuse.search(searchKey).map((o) => ({
+        ...o.item,
+        nameMatch: o.matches?.find((i) => i.key === 'name'),
+        addressMatch: o.matches?.find(
+          (i) => i.key === 'address' && exactMatch(i),
+        ),
+      }));
+      // Require an exact match for address search.
+      itemSearched = itemSearched.filter((o) => {
+        if (!o.nameMatch && !o.addressMatch) {
+          return false;
+        }
+        if (!o.nameMatch && o.addressMatch) {
+          return exactMatch(o.addressMatch);
+        }
+        return true;
+      });
+      sections = buildSections(itemSearched);
+    } else {
+      sections = buildSections(items);
     }
     return sections.map((item) => {
       const isFold = foldItems.includes(item.title);
@@ -232,23 +270,36 @@ export const AddressBookListContent = ({
         isFold,
       };
     });
-  }, [foldItems, sections, searchKey]);
+  }, [foldItems, items, searchKey]);
+
+  const media = useMedia();
+
+  const estimatedItemSize = useMemo(() => (media.md ? 80 : 60), [media.md]);
 
   return (
-    <SectionList
-      onContentSizeChange={onContentSizeChange}
-      estimatedItemSize="$6"
-      sections={memoSections}
-      renderSectionHeader={renderSectionHeader}
-      renderItem={renderItem}
-      ListEmptyComponent={
-        sections.length ? (
-          RenderNoSearchResult
-        ) : (
-          <RenderEmptyAddressBook hideAddItemButton={hideEmptyAddButton} />
-        )
-      }
-      keyExtractor={(item: unknown) => (item as IAddressItem).address}
-    />
+    <Stack flex={1}>
+      <Stack px="$5" pb="$2">
+        <SearchBar
+          placeholder={intl.formatMessage({ id: ETranslations.global_search })}
+          value={searchKey}
+          onChangeText={(text) => setSearchKey(text)}
+        />
+      </Stack>
+      <AddressBookSectionList
+        showsVerticalScrollIndicator={false}
+        estimatedItemSize={estimatedItemSize}
+        sections={memoSections}
+        renderSectionHeader={renderSectionHeader}
+        renderItem={renderItem}
+        ListEmptyComponent={
+          items.length ? (
+            RenderNoSearchResult
+          ) : (
+            <RenderEmptyAddressBook hideAddItemButton={hideEmptyAddButton} />
+          )
+        }
+        keyExtractor={(item: unknown) => (item as IAddressItem).address}
+      />
+    </Stack>
   );
 };

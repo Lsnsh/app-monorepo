@@ -1,10 +1,23 @@
 import { isNil } from 'lodash';
 
-import platformEnv, {
-  isExtensionUiSidePanel,
-} from '@onekeyhq/shared/src/platformEnv';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import { sidePanelState } from '@onekeyhq/shared/src/utils/sidePanelUtils';
 
-import { getAllowPathFromScreenNames } from './routeUtils';
+import { EAppEventBusNames, appEventBus } from '../eventBus/appEventBus';
+
+import { buildModalRouteParams } from './routeUtils';
+
+/**
+ * ext get html function
+ */
+export const EXT_HTML_FILES = {
+  background: 'background.html',
+  uiPopup: 'ui-popup.html',
+  uiExpandTab: 'ui-expand-tab.html',
+  uiPassKey: 'ui-passkey.html',
+  uiSidePanel: 'ui-side-panel.html',
+  uiStandAloneWindow: 'ui-standalone-window.html',
+};
 
 // Chrome extension popups can have a maximum height of 600px and maximum width of 800px
 export const UI_HTML_DEFAULT_MIN_WIDTH = 375;
@@ -14,6 +27,10 @@ export type IOpenUrlRouteInfo = {
   routes?: string | string[];
   path?: string;
   params?: any;
+  modalParams?: {
+    screen: any;
+    params: any;
+  };
 };
 
 function buildExtRouteUrl(
@@ -38,10 +55,6 @@ function buildExtRouteUrl(
   }
 
   return chrome.runtime.getURL(`/${htmlFile}${hash}`);
-}
-
-function openUrl(url: string) {
-  window.open(url, '_blank');
 }
 
 async function getTabById(tabId: number): Promise<chrome.tabs.Tab> {
@@ -82,16 +95,19 @@ async function openUrlInTab(
   });
 }
 
-async function openStandaloneWindow(routeInfo: IOpenUrlRouteInfo) {
-  const url = buildExtRouteUrl('ui-standalone-window.html', routeInfo);
+const getWindowPosition = async () => {
   let left = 0;
   let top = 0;
-  // debugger
   try {
     /* eslint-disable */
     const lastFocused = await browser.windows.getLastFocused();
     // Position window in top right corner of lastFocused window.
-    if (lastFocused && lastFocused.top && lastFocused.left && lastFocused.width) {
+    if (
+      lastFocused &&
+      lastFocused.top &&
+      lastFocused.left &&
+      lastFocused.width
+    ) {
       top = lastFocused.top;
       left = lastFocused.left + (lastFocused.width - UI_HTML_DEFAULT_MIN_WIDTH);
     }
@@ -100,10 +116,19 @@ async function openStandaloneWindow(routeInfo: IOpenUrlRouteInfo) {
     // The following properties are more than likely 0, due to being
     // opened from the background chrome process for the extension that
     // has no physical dimensions
-    const { screenX, screenY, outerWidth } = window;
+    const { screenX, screenY, outerWidth } = globalThis;
     top = Math.max(screenY, 0);
     left = Math.max(screenX + (outerWidth - UI_HTML_DEFAULT_MIN_WIDTH), 0);
   }
+  return {
+    top,
+    left,
+  };
+};
+
+async function openStandaloneWindow(routeInfo: IOpenUrlRouteInfo) {
+  const url = buildExtRouteUrl('ui-standalone-window.html', routeInfo);
+  const { top, left } = await getWindowPosition();
   return chrome.windows.create({
     focused: true,
     type: 'popup',
@@ -117,16 +142,36 @@ async function openStandaloneWindow(routeInfo: IOpenUrlRouteInfo) {
   });
 }
 
-/**
- * ext get html function
- */
-export const EXT_HTML_FILES = {
-  background: 'background.html',
-  uiPopup: 'ui-popup.html',
-  uiExpandTab: 'ui-expand-tab.html',
-  uiSidePanel: 'ui-side-panel.html',
-  uiStandAloneWindow: 'ui-standalone-window.html',
-};
+export enum EPassKeyWindowType {
+  unlock = 'unlock',
+  create = 'create',
+}
+export enum EPassKeyWindowFrom {
+  popup = 'popup',
+  sidebar = 'sidebar',
+}
+async function openPassKeyWindow(type: EPassKeyWindowType) {
+  const url = buildExtRouteUrl(EXT_HTML_FILES.uiPassKey, {
+    params: {
+      type,
+      from: platformEnv.isExtensionUiPopup
+        ? EPassKeyWindowFrom.popup
+        : EPassKeyWindowFrom.sidebar,
+    },
+  });
+  const { top, left } = await getWindowPosition();
+  return chrome.windows.create({
+    focused: true,
+    type: 'popup',
+    // init size same to ext ui-popup.html
+    height: 1, // height including title bar, so should add 50px more
+    width: 1,
+    // check useAutoRedirectToRoute()
+    url,
+    top,
+    left,
+  });
+}
 
 export function getExtensionIndexHtml() {
   if (platformEnv.isExtensionBackgroundHtml) {
@@ -157,39 +202,98 @@ async function openExpandTab(
   return tab;
 }
 
-function openSidePanel(
+async function resetSidePanelPath() {
+  if (typeof chrome !== 'undefined' && chrome.sidePanel) {
+    const url = buildExtRouteUrl(EXT_HTML_FILES.uiSidePanel, {});
+    await chrome.sidePanel.setOptions({
+      path: url,
+      enabled: true,
+    });
+  }
+}
+
+async function openSidePanel(
   routeInfo: IOpenUrlRouteInfo,
 ): Promise<chrome.tabs.Tab | undefined> {
-  return new Promise((resolve) => {
-    if (
-      chrome.sidePanel &&
-      chrome.sidePanel.open &&
-      chrome.sidePanel.setOptions
-    ) {
-      const url = buildExtRouteUrl(EXT_HTML_FILES.uiSidePanel, routeInfo);
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const tab = tabs[0];
-        if (tab && tab.id) {
-          chrome.sidePanel.open({ tabId: tab.id }, () => {
-            void chrome.sidePanel.setOptions({
-              tabId: tab.id,
-              path: url,
-              enabled: true,
-            });
+  if (typeof chrome !== 'undefined' && chrome.sidePanel) {
+    if (platformEnv.isExtensionBackground) {
+      if (sidePanelState.isOpen) {
+        const modalParams =
+          routeInfo?.modalParams ??
+          buildModalRouteParams({
+            screens: routeInfo.routes as string[],
+            routeParams: routeInfo.params,
           });
-          resolve(tab);
-        }
-      });
-    } else {
-      return openExpandTab(routeInfo);
+        appEventBus.emit(EAppEventBusNames.SidePanel_BgToUI, {
+          type: 'pushModal',
+          payload: {
+            modalParams,
+          },
+        });
+      } else {
+        throw new Error('The sidePanel cannot be opened in the bg thread.');
+      }
+      return;
     }
+    const url = buildExtRouteUrl(EXT_HTML_FILES.uiSidePanel, routeInfo);
+    const window = await chrome.windows.getCurrent({ populate: true });
+    const windowId = window.id;
+    if (windowId) {
+      await chrome.sidePanel.open({ windowId });
+      await chrome.sidePanel.setOptions({
+        path: url,
+        enabled: true,
+      });
+      return;
+    }
+  }
+  return openExpandTab(routeInfo);
+}
+
+async function openExpandTabOrSidePanel(routeInfo: IOpenUrlRouteInfo) {
+  if (sidePanelState.isOpen) {
+    return openSidePanel(routeInfo);
+  }
+  return openExpandTab(routeInfo);
+}
+
+async function openPanelOnActionClick(enableSidePanel: boolean) {
+  await chrome.sidePanel.setPanelBehavior({
+    openPanelOnActionClick: enableSidePanel,
+  });
+}
+
+function focusExistWindow({
+  windowId,
+}: {
+  windowId: number | undefined | null;
+}) {
+  if (windowId) {
+    void chrome.windows.update(windowId, { focused: true });
+  }
+}
+
+async function openPermissionSettings() {
+  // eslint-disable-next-line spellcheck/spell-checker
+  // chrome://settings/content/siteDetails?site=chrome-extension://apmndckkdnmkjblccnclblclninghkfh
+  // eslint-disable-next-line spellcheck/spell-checker
+  // edge://settings/content/siteDetails?site=chrome-extension://apmndckkdnmkjblccnclblclninghkfh
+
+  const extensionId: string = chrome.runtime.id;
+  await chrome.tabs.create({
+    url: `chrome://settings/content/siteDetails?site=chrome-extension%3A%2F%2F${extensionId}%2F`,
   });
 }
 
 export default {
-  openUrl,
   openUrlInTab,
+  openPassKeyWindow,
+  openExpandTabOrSidePanel,
   openStandaloneWindow,
   openExpandTab,
   openSidePanel,
+  resetSidePanelPath,
+  focusExistWindow,
+  openPanelOnActionClick,
+  openPermissionSettings,
 };

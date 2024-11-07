@@ -1,8 +1,8 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect } from 'react';
 
 import { useIntl } from 'react-intl';
 
-import type { ILocaleIds } from '@onekeyhq/shared/src/locale';
+import type { ETranslations } from '@onekeyhq/shared/src/locale';
 
 import { EPageType, PageTypeHOC } from '../../../hocs';
 import { useThemeValue } from '../../../hooks';
@@ -20,10 +20,11 @@ export interface IModalFlowNavigatorConfig<
   RouteName extends string,
   P extends ParamListBase,
 > extends ICommonNavigatorConfig<RouteName, P> {
-  translationId?: ILocaleIds | string;
+  translationId?: ETranslations | string;
   allowDisableClose?: boolean;
   disableClose?: boolean;
   shouldPopOnClickBackdrop?: boolean;
+  dismissOnOverlayPress?: boolean;
 }
 
 interface IModalFlowNavigatorProps<
@@ -31,6 +32,9 @@ interface IModalFlowNavigatorProps<
   P extends ParamListBase,
 > {
   config: IModalFlowNavigatorConfig<RouteName, P>[];
+  name?: string;
+  onMounted?: () => void;
+  onUnmounted?: () => void;
 }
 
 const ModalStack = hasStackNavigatorModal
@@ -39,6 +43,9 @@ const ModalStack = hasStackNavigatorModal
 
 function ModalFlowNavigator<RouteName extends string, P extends ParamListBase>({
   config,
+  name: pageStackName,
+  onMounted,
+  onUnmounted,
 }: IModalFlowNavigatorProps<RouteName, P>) {
   const [bgColor, titleColor] = useThemeValue(['bgApp', 'text']);
   const intl = useIntl();
@@ -54,6 +61,13 @@ function ModalFlowNavigator<RouteName extends string, P extends ParamListBase>({
     [bgColor, titleColor],
   );
 
+  useEffect(() => {
+    onMounted?.();
+    return () => {
+      onUnmounted?.();
+    };
+  }, [onMounted, onUnmounted]);
+
   return (
     // @ts-expect-error
     <ModalStack.Navigator screenOptions={makeScreenOptions}>
@@ -66,15 +80,17 @@ function ModalFlowNavigator<RouteName extends string, P extends ParamListBase>({
           allowDisableClose,
           disableClose,
           shouldPopOnClickBackdrop,
+          dismissOnOverlayPress,
         }) => {
           const customOptions: IModalNavigationOptions = {
             ...options,
             allowDisableClose,
             disableClose,
             shouldPopOnClickBackdrop,
+            dismissOnOverlayPress,
             title: translationId
               ? intl.formatMessage({
-                  id: translationId as ILocaleIds,
+                  id: translationId as ETranslations,
                 })
               : '',
           };

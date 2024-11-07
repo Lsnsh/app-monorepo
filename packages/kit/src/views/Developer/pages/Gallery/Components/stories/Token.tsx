@@ -3,7 +3,7 @@ import { Token } from '@onekeyhq/kit/src/components/Token';
 
 import { Layout } from './utils/Layout';
 
-const tokenImageUri = 'https://onekey-asset.com/assets/btc/btc.png';
+const tokenImageUri = 'https://uni.onekey-asset.com/static/chain/btc.png';
 const evmTokenImageUri =
   'https://common.onekey-asset.com/token/evm-1/0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0.jpg';
 const TokenGallery = () => (
@@ -15,7 +15,7 @@ const TokenGallery = () => (
       {
         title: 'size',
         element: (
-          <YStack space="$3">
+          <YStack gap="$3">
             <Token size="xs" tokenImageUri={tokenImageUri} />
             <Token size="sm" tokenImageUri={tokenImageUri} />
             <Token size="md" tokenImageUri={tokenImageUri} />
@@ -27,7 +27,7 @@ const TokenGallery = () => (
       {
         title: 'isNFT',
         element: (
-          <YStack space="$3">
+          <YStack gap="$3">
             <Token size="md" tokenImageUri={evmTokenImageUri} />
             <Token size="md" isNFT tokenImageUri={evmTokenImageUri} />
             <Token size="md" isNFT={false} tokenImageUri={evmTokenImageUri} />
@@ -37,7 +37,7 @@ const TokenGallery = () => (
       {
         title: 'networkImageUri',
         element: (
-          <YStack space="$3">
+          <YStack gap="$3">
             <Token
               size="md"
               networkImageUri={tokenImageUri}

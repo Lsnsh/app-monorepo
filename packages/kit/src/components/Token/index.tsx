@@ -3,17 +3,26 @@
   A component for render token (and NFT) images. It has a fallback icon when the image is not available. Typically used in list, card, or any other components that display small token images.
 */
 
-import type { IImageProps, SizeTokens } from '@onekeyhq/components';
-import { Icon, Image, Stack } from '@onekeyhq/components';
+import type {
+  IImageProps,
+  IKeyOfIcons,
+  SizeTokens,
+} from '@onekeyhq/components';
+import { Icon, Image, Skeleton, Stack } from '@onekeyhq/components';
+
+import { NetworkAvatar, NetworkAvatarBase } from '../NetworkAvatar';
 
 import type { ImageURISource } from 'react-native';
 
 type ITokenSize = 'xl' | 'lg' | 'md' | 'sm' | 'xs';
-type ITokenProps = {
+export type ITokenProps = {
   isNFT?: boolean;
+  fallbackIcon?: IKeyOfIcons;
   size?: ITokenSize;
   tokenImageUri?: ImageURISource['uri'];
   networkImageUri?: ImageURISource['uri'];
+  showNetworkIcon?: boolean;
+  networkId?: string;
 } & Omit<IImageProps, 'size'>;
 
 const sizeMap: Record<
@@ -36,11 +45,22 @@ export function Token({
   size,
   tokenImageUri,
   networkImageUri,
+  networkId,
+  showNetworkIcon,
+  fallbackIcon,
   ...rest
 }: ITokenProps) {
   const { tokenImageSize, chainImageSize, fallbackIconSize } = size
     ? sizeMap[size]
     : sizeMap.lg;
+
+  let fallbackIconName: IKeyOfIcons = isNFT
+    ? 'ImageWavesOutline'
+    : 'CryptoCoinOutline';
+
+  if (fallbackIcon) {
+    fallbackIconName = fallbackIcon;
+  }
 
   const tokenImage = (
     <Image
@@ -57,47 +77,58 @@ export function Token({
       <Image.Fallback
         alignItems="center"
         justifyContent="center"
-        bg="$bgStrong"
+        bg="$gray5"
         delayMs={1000}
       >
         <Icon
           size={fallbackIconSize}
-          name={isNFT ? 'ImageWavesOutline' : 'CoinOutline'}
-          color="$iconDisabled"
+          name={fallbackIconName}
+          color="$iconSubdued"
         />
       </Image.Fallback>
+      <Image.Loading>
+        <Skeleton width="100%" height="100%" radius="round" />
+      </Image.Loading>
     </Image>
   );
 
-  if (!networkImageUri) return tokenImage;
-
-  return (
-    <Stack position="relative" width={tokenImageSize} height={tokenImageSize}>
-      {tokenImage}
-      <Stack
-        position="absolute"
-        right="$-1"
-        bottom="$-1"
-        p="$0.5"
-        bg="$bgApp"
-        borderRadius="$full"
-      >
-        <Image
-          width={chainImageSize}
-          height={chainImageSize}
+  if (networkImageUri) {
+    return (
+      <Stack position="relative" width={tokenImageSize} height={tokenImageSize}>
+        {tokenImage}
+        <Stack
+          position="absolute"
+          right="$-1"
+          bottom="$-1"
+          p="$0.5"
+          bg="$bgApp"
           borderRadius="$full"
           {...rest}
         >
-          <Image.Source
-            source={{
-              uri: networkImageUri,
-            }}
-          />
-          <Image.Fallback bg="$bgStrong" delayMs={1000}>
-            <Icon size={chainImageSize} name="QuestionmarkSolid" />
-          </Image.Fallback>
-        </Image>
+          <NetworkAvatarBase size={chainImageSize} logoURI={networkImageUri} />
+        </Stack>
       </Stack>
-    </Stack>
-  );
+    );
+  }
+
+  if (showNetworkIcon && networkId) {
+    return (
+      <Stack position="relative" width={tokenImageSize} height={tokenImageSize}>
+        {tokenImage}
+        <Stack
+          position="absolute"
+          right="$-1"
+          bottom="$-1"
+          p="$0.5"
+          bg="$bgApp"
+          borderRadius="$full"
+          {...rest}
+        >
+          <NetworkAvatar networkId={networkId} size={chainImageSize} />
+        </Stack>
+      </Stack>
+    );
+  }
+
+  return tokenImage;
 }

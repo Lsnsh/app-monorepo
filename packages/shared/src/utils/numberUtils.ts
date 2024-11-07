@@ -2,10 +2,12 @@ import BigNumber from 'bignumber.js';
 
 import { check } from '@onekeyhq/shared/src/utils/assertUtils';
 
-import { appLocale } from '../locale/appLocale';
+import { appLocale, fallbackAppLocaleIntl } from '../locale/appLocale';
 import platformEnv from '../platformEnv';
 
 import hexUtils from './hexUtils';
+
+import type { FormatNumberOptions } from '@formatjs/intl';
 
 const toBigIntHex = (value: BigNumber): string => {
   let hexStr = value.integerValue().toString(16);
@@ -63,37 +65,51 @@ const countLeadingZeroDecimals = (x: BigNumber) => {
   return counts > 0 ? counts : 0;
 };
 
-const stripTrailingZero = (x: string) =>
-  x.replace(/(\.[0-9]*[1-9])0+$|\.0*$/, '$1');
+const stripTrailingZero = (x: string, decimalSymbol: string) =>
+  x.replace(
+    new RegExp(`(\\${decimalSymbol}[0-9]*[1-9])0+$|\\${decimalSymbol}0*$`),
+    '$1',
+  );
+
+const formatNumber = (value: number, options?: FormatNumberOptions) => {
+  // Bengali number formatting falls back to default 'en' style.
+  if (['bn'].includes(appLocale.intl.locale)) {
+    return fallbackAppLocaleIntl.formatNumber(value, options);
+  }
+  return appLocale.intl.formatNumber(value, options);
+};
+
+const symbolMap: Record<string, string> = {};
+const lazyDecimalSymbol = (digits: number) => {
+  const locale = appLocale.intl.locale;
+  if (!symbolMap[locale]) {
+    symbolMap[locale] = formatNumber(0.1, {
+      maximumFractionDigits: digits,
+      minimumFractionDigits: digits,
+    })[1];
+  }
+  return symbolMap[locale];
+};
 
 const formatLocalNumber = (
   value: BigNumber | string,
   digits = 2,
   keepTrailingZeros = false,
-  keepDigits = false,
 ) => {
-  const string = typeof value === 'string' ? value : value.toFixed();
-  let [integerPart, decimalPart] = string.split('.');
-  if (!decimalPart && keepDigits) {
-    decimalPart = '0';
+  const num = new BigNumber(value).toFixed(digits, BigNumber.ROUND_HALF_UP);
+
+  const [integerPart, decimalPart] = num.split('.');
+  const integer = `${integerPart === '-0' ? '-' : ''}${formatNumber(
+    new BigNumber(integerPart).toFixed() as any,
+  )}`;
+  const decimalSymbol = lazyDecimalSymbol(digits);
+  const formatDecimal = `${decimalSymbol}${decimalPart}`;
+  if (integer === '∞') {
+    return num;
   }
-  const decimal = decimalPart ? `.${decimalPart}` : '';
+  const result = `${integer}${formatDecimal}`;
 
-  const integer = `${
-    integerPart === '-0' ? '-' : ''
-  }${appLocale.intl.formatNumber(BigInt(integerPart))}`;
-
-  const result = `${integer}${
-    decimal
-      ? appLocale.intl
-          .formatNumber(Number.parseFloat(decimal), {
-            maximumFractionDigits: digits,
-            minimumFractionDigits: digits,
-          })
-          .slice(1)
-      : ''
-  }`;
-  return keepTrailingZeros ? stripTrailingZero(result) : result;
+  return keepTrailingZeros ? stripTrailingZero(result, decimalSymbol) : result;
 };
 
 export type IFormatNumberFunc = (
@@ -170,13 +186,13 @@ export const formatPrice: IFormatNumberFunc = (value, options) => {
   }
   if (val.eq(0)) {
     return {
-      formattedValue: formatLocalNumber('0', 2, false, true),
+      formattedValue: formatLocalNumber('0', 2, false),
       meta: { value, currency, isZero: true, ...options },
     };
   }
   if (val.gte(1)) {
     return {
-      formattedValue: formatLocalNumber(val, 2, false, true),
+      formattedValue: formatLocalNumber(val, 2, false),
       meta: { value, currency, ...options },
     };
   }
@@ -196,7 +212,7 @@ export const formatPriceChange: IFormatNumberFunc = (value, options) => {
   }
   if (val.eq(0)) {
     return {
-      formattedValue: '0.00',
+      formattedValue: formatLocalNumber('0', 2, false),
       meta: { value, isZero: true, symbol: '%', ...options },
     };
   }
@@ -215,13 +231,13 @@ export const formatValue: IFormatNumberFunc = (value, options) => {
   }
   if (val.eq(0)) {
     return {
-      formattedValue: '0.00',
+      formattedValue: formatLocalNumber('0', 2, false),
       meta: { value, currency, isZero: true, ...options },
     };
   }
   if (val.lt(0.01)) {
     return {
-      formattedValue: '0.01',
+      formattedValue: formatLocalNumber('0.01', 2, true),
       meta: { value, leading: '< ', currency, ...options },
     };
   }
@@ -253,7 +269,7 @@ export const formatMarketCap: IFormatNumberFunc = (value, options) => {
   if (val.gte(10e8)) {
     return {
       formattedValue: formatLocalNumber(val.div(10e8), 2, true),
-      meta: { value, unit: 'B' },
+      meta: { value, unit: 'B', ...options },
     };
   }
   if (val.gte(10e5)) {
@@ -295,7 +311,7 @@ export const formatDisplayNumber = (value: IDisplayNumber) => {
   const startsNumberIndex = isNegativeNumber ? 1 : 0;
 
   if (invalid) {
-    if (platformEnv.isDev) {
+    if (platformEnv.isDev && !platformEnv.isJest) {
       console.error(
         `fail to format invalid number: ${rawValue}, please check it again`,
       );
@@ -306,18 +322,19 @@ export const formatDisplayNumber = (value: IDisplayNumber) => {
   if (leading) {
     strings.push(leading);
   }
+  if (showPlusMinusSigns && !isNegativeNumber) {
+    strings.push('+');
+  }
+
   if (currency) {
     strings.push(currency);
   }
 
-  if (showPlusMinusSigns && !isNegativeNumber) {
-    strings.push('+');
-  }
   if (leadingZeros && leadingZeros > 4) {
     if (isNegativeNumber) {
       strings.push('-');
     }
-    strings.push('0.0');
+    strings.push(formatLocalNumber('0', 1, false));
     strings.push({ value: leadingZeros, type: 'sub' });
     strings.push(formattedValue.slice(leadingZeros + 2 + startsNumberIndex));
   } else {
@@ -353,6 +370,7 @@ export const NUMBER_FORMATTER = {
 };
 
 export interface INumberFormatProps {
+  hideValue?: boolean;
   formatter?: keyof typeof NUMBER_FORMATTER;
   formatterOptions?: IFormatterOptions;
 }
@@ -382,7 +400,7 @@ export const numberFormat = (
         return r;
       }
       if (r.type === 'sub') {
-        return new Array(r.value).fill(0).join('');
+        return new Array(r.value - 1).fill(0).join('');
       }
       return '';
     })

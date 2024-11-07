@@ -3,8 +3,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { throttle } from 'lodash';
 
 import { useIsMounted } from '@onekeyhq/components/src/hocs/Provider/hooks/useIsMounted';
+import type { IElectronWebView } from '@onekeyhq/kit/src/components/WebView/types';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import { ETabRoutes } from '@onekeyhq/shared/src/routes';
+import networkUtils from '@onekeyhq/shared/src/utils/networkUtils';
 import type {
   IConnectionAccountInfo,
   IConnectionStorageType,
@@ -12,16 +14,23 @@ import type {
 
 import backgroundApiProxy from '../../../background/instance/backgroundApiProxy';
 import useListenTabFocusState from '../../../hooks/useListenTabFocusState';
+import { usePrevious } from '../../../hooks/usePrevious';
 import { getWebviewWrapperRef } from '../utils/explorerUtils';
 
 import { useWebTabDataById } from './useWebTabs';
 
 import type { IHandleAccountChangedParams } from '../../DAppConnection/hooks/useHandleAccountChanged';
-import type { IElectronWebView } from '../components/WebView/types';
+
+const skipDomReadyNotifySites: Record<string, boolean> = {
+  'https://wallet.keplr.app': true,
+};
 
 const notifyChanges = throttle((url: string, fromScene?: string) => {
   console.log('webview notify changed events: ', url, fromScene);
   const targetOrigin = new URL(url).origin;
+  if (fromScene === 'domReady' && skipDomReadyNotifySites[targetOrigin]) {
+    return;
+  }
   void backgroundApiProxy.serviceDApp.notifyDAppAccountsChanged(targetOrigin);
   void backgroundApiProxy.serviceDApp.notifyDAppChainChanged(targetOrigin);
 }, 800);
@@ -35,6 +44,7 @@ export function useDAppNotifyChanges({ tabId }: { tabId: string | null }) {
   useListenTabFocusState([ETabRoutes.MultiTabBrowser], (isFocus) => {
     setIsFocusedInDiscoveryTab(isFocus);
   });
+  const previousUrl = usePrevious(tab?.url);
 
   // reconnect jsBridge
   useEffect(() => {
@@ -70,6 +80,14 @@ export function useDAppNotifyChanges({ tabId }: { tabId: string | null }) {
       return;
     }
 
+    if (previousUrl && previousUrl !== tab.url) {
+      const preUrl = new URL(previousUrl);
+      const curUrl = new URL(tab.url);
+      if (preUrl.origin === curUrl.origin) {
+        return;
+      }
+    }
+
     console.log('webview isFocused and notifyChanges: ', tab.url);
     if (platformEnv.isDesktop) {
       const innerRef = webviewRef?.innerRef as IElectronWebView | undefined;
@@ -96,7 +114,13 @@ export function useDAppNotifyChanges({ tabId }: { tabId: string | null }) {
         };
       }
     }
-  }, [isFocusedInDiscoveryTab, tab?.url, webviewRef, isMountedRef]);
+  }, [
+    isFocusedInDiscoveryTab,
+    tab?.url,
+    webviewRef,
+    isMountedRef,
+    previousUrl,
+  ]);
 }
 
 export function useShouldUpdateConnectedAccount() {
@@ -111,9 +135,12 @@ export function useShouldUpdateConnectedAccount() {
         prevAccountInfo.networkId !== accountInfo.networkId ||
         prevAccountInfo.accountId !== accountInfo.accountId ||
         prevAccountInfo.address !== accountInfo.address;
+
       const isValidAccountInfo =
+        accountInfo.accountId &&
         accountInfo.walletId &&
-        accountInfo.indexedAccountId &&
+        (networkUtils.isLightningNetworkByNetworkId(accountInfo.networkId) ||
+          accountInfo.address) &&
         accountInfo.networkId;
 
       return prevAccountInfo && hasAccountChanged && isValidAccountInfo;

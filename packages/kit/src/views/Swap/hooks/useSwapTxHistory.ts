@@ -1,149 +1,26 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 
-import { debounce } from 'lodash';
-
-import { ETabRoutes } from '@onekeyhq/shared/src/routes';
-import {
-  EProtocolOfExchange,
-  ESwapTxHistoryStatus,
-} from '@onekeyhq/shared/types/swap/types';
+import { useSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import { ESwapTxHistoryStatus } from '@onekeyhq/shared/types/swap/types';
 import type {
   ISwapTxHistory,
   ISwapTxInfo,
 } from '@onekeyhq/shared/types/swap/types';
 
 import backgroundApiProxy from '../../../background/instance/backgroundApiProxy';
-import useListenTabFocusState from '../../../hooks/useListenTabFocusState';
-import { usePromiseResult } from '../../../hooks/usePromiseResult';
 import {
-  useSwapActions,
   useSwapFromTokenAmountAtom,
   useSwapNetworksAtom,
   useSwapSelectFromTokenAtom,
   useSwapSelectToTokenAtom,
-  useSwapTxHistoryAtom,
-  useSwapTxHistoryPendingAtom,
 } from '../../../states/jotai/contexts/swap';
 
-export function useSwapTxHistoryListSyncFromSimpleDb() {
-  const [, setSwapHistory] = useSwapTxHistoryAtom();
-  const { isLoading } = usePromiseResult(
-    async () => {
-      const histories =
-        await backgroundApiProxy.simpleDb.swapHistory.getSwapHistoryList();
-      const sortHistories = histories.sort(
-        (a, b) => b.date.created - a.date.created,
-      );
-      setSwapHistory(sortHistories);
-    },
-    [setSwapHistory],
-    {
-      watchLoading: true,
-    },
-  );
-  return { syncLoading: isLoading };
-}
-
-export function useSwapTxHistoryStateSyncInterval() {
-  const [swapTxHistoryPending] = useSwapTxHistoryPendingAtom();
-  const { updateSwapHistoryItem } = useSwapActions().current;
-  const internalRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const swapTxHistoryPendingRef = useRef<ISwapTxHistory[]>([]);
-  if (swapTxHistoryPendingRef.current !== swapTxHistoryPending) {
-    swapTxHistoryPendingRef.current = swapTxHistoryPending;
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const triggerSwapPendingHistoryInterval = useCallback(
-    debounce(() => {
-      if (!swapTxHistoryPendingRef.current.length) {
-        return;
-      }
-
-      swapTxHistoryPendingRef.current.forEach(async (swapTxHistory) => {
-        if (internalRef.current[swapTxHistory.txInfo.txId]) {
-          return;
-        }
-
-        const interval = setInterval(async () => {
-          const txStatusRes = await backgroundApiProxy.serviceSwap.fetchTxState(
-            {
-              txId: swapTxHistory.txInfo.txId,
-              provider: swapTxHistory.swapInfo.provider.provider,
-              protocol: EProtocolOfExchange.SWAP,
-              networkId: swapTxHistory.baseInfo.fromToken.networkId,
-              ctx: swapTxHistory.ctx,
-              toTokenAddress: swapTxHistory.baseInfo.toToken.contractAddress,
-              receivedAddress: swapTxHistory.txInfo.receiver,
-            },
-          );
-          if (txStatusRes.state === ESwapTxHistoryStatus.PENDING) {
-            return;
-          }
-          clearInterval(interval);
-          delete internalRef.current[swapTxHistory.txInfo.txId];
-          await updateSwapHistoryItem({
-            ...swapTxHistory,
-            status: txStatusRes.state,
-            txInfo: {
-              ...swapTxHistory.txInfo,
-              receiverTransactionId: txStatusRes.crossChainReceiveTxHash || '',
-              gasFeeInNative: txStatusRes.gasFee
-                ? txStatusRes.gasFee
-                : swapTxHistory.txInfo.gasFeeInNative,
-              gasFeeFiatValue: txStatusRes.gasFeeFiatValue
-                ? txStatusRes.gasFeeFiatValue
-                : swapTxHistory.txInfo.gasFeeFiatValue,
-            },
-            baseInfo: {
-              ...swapTxHistory.baseInfo,
-              toAmount: txStatusRes.dealReceiveAmount
-                ? txStatusRes.dealReceiveAmount
-                : swapTxHistory.baseInfo.toAmount,
-            },
-          });
-        }, 1000 * 5);
-        internalRef.current[swapTxHistory.txInfo.txId] = interval;
-      });
-    }, 100),
-    [updateSwapHistoryItem],
-  );
-
-  const cleanupSwapPendingHistoryInterval = useCallback(() => {
-    const currentInternalRef = internalRef.current;
-    Object.entries(currentInternalRef).forEach(([key, value]) => {
-      clearInterval(value);
-      delete currentInternalRef[key];
-    });
-  }, []);
-
-  useListenTabFocusState(
-    ETabRoutes.Swap,
-    (isFocus: boolean, isHiddenModel: boolean) => {
-      if (isFocus && !isHiddenModel) {
-        triggerSwapPendingHistoryInterval();
-      } else {
-        cleanupSwapPendingHistoryInterval();
-      }
-    },
-  );
-
-  useEffect(() => {
-    triggerSwapPendingHistoryInterval();
-    return () => {
-      cleanupSwapPendingHistoryInterval();
-    };
-  }, [cleanupSwapPendingHistoryInterval, triggerSwapPendingHistoryInterval]);
-  return {
-    swapTxHistoryPending,
-  };
-}
-
 export function useSwapTxHistoryActions() {
-  const { addSwapHistoryItem } = useSwapActions().current;
   const [swapNetworks] = useSwapNetworksAtom();
   const [, setFromToken] = useSwapSelectFromTokenAtom();
   const [, setToken] = useSwapSelectToTokenAtom();
   const [, setFromTokenAmount] = useSwapFromTokenAmountAtom();
+  const [settingsAtom] = useSettingsPersistAtom();
   const generateSwapHistoryItem = useCallback(
     async ({
       txId,
@@ -159,6 +36,7 @@ export function useSwapTxHistoryActions() {
       if (swapTxInfo) {
         const swapHistoryItem: ISwapTxHistory = {
           status: ESwapTxHistoryStatus.PENDING,
+          currency: settingsAtom.currencyInfo.symbol,
           baseInfo: {
             toAmount: swapTxInfo.receiver.amount,
             fromAmount: swapTxInfo.sender.amount,
@@ -186,15 +64,23 @@ export function useSwapTxHistoryActions() {
           swapInfo: {
             instantRate: swapTxInfo.swapBuildResData.result.instantRate ?? '0',
             provider: swapTxInfo.swapBuildResData.result.info,
+            socketBridgeScanUrl:
+              swapTxInfo.swapBuildResData.socketBridgeScanUrl,
             oneKeyFee:
               swapTxInfo.swapBuildResData.result.fee?.percentageFee ?? 0,
+            protocolFee:
+              swapTxInfo.swapBuildResData.result.fee?.protocolFees ?? 0,
+            orderId: swapTxInfo.swapBuildResData.orderId,
+            supportUrl: swapTxInfo.swapBuildResData.result.supportUrl,
           },
           ctx: swapTxInfo.swapBuildResData.ctx,
         };
-        await addSwapHistoryItem(swapHistoryItem);
+        await backgroundApiProxy.serviceSwap.addSwapHistoryItem(
+          swapHistoryItem,
+        );
       }
     },
-    [addSwapHistoryItem, swapNetworks],
+    [settingsAtom.currencyInfo.symbol, swapNetworks],
   );
 
   const swapAgainUseHistoryItem = useCallback(

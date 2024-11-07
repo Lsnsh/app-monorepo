@@ -1,8 +1,14 @@
 import { HardwareErrorCode } from '@onekeyfe/hd-shared';
+import { isArray, isNil } from 'lodash';
 
 import platformEnv from '../../platformEnv';
 import * as HardwareErrors from '../errors/hardwareErrors';
-import { ECustomOneKeyHardwareError } from '../types/errorTypes';
+import {
+  ECustomOneKeyHardwareError,
+  EOneKeyErrorClassNames,
+} from '../types/errorTypes';
+
+import { getDeviceErrorPayloadMessage } from './errorUtils';
 
 import type { IDeviceResponseResult } from '../../../types/device';
 import type {
@@ -19,23 +25,34 @@ export function captureSpecialError(
     Number(code) === HardwareErrorCode.DeviceInitializeFailed &&
     message.includes('ECONNABORTED')
   ) {
-    return new HardwareErrors.ConnectTimeoutError({ message });
+    return new HardwareErrors.ConnectTimeoutError({
+      payload: undefined as any,
+      message,
+    });
   }
   if (message.includes('Bridge network error')) {
-    return new HardwareErrors.BridgeNetworkError({ message });
+    return new HardwareErrors.BridgeNetworkError({
+      payload: undefined as any,
+      message,
+    });
   }
   return null;
 }
 
 export function convertDeviceError(
-  payload: IOneKeyHardwareErrorPayload,
+  payloadOrigin: IOneKeyHardwareErrorPayload,
 ): IOneKeyError {
-  // handle ext error
-  const { code, error, message } = payload;
+  const payload = {
+    ...payloadOrigin,
+    message: getDeviceErrorPayloadMessage(payloadOrigin),
+  };
+  const { code, message, params } = payload;
 
-  const msg = error ?? message ?? 'Unknown error';
+  // TODO convert hardware error payload params to OneKeyError i18n info
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const info = params;
 
-  const specialError = captureSpecialError(code, msg);
+  const specialError = captureSpecialError(code, message);
   /**
    * Catch some special errors
    * they may have multiple error codes
@@ -52,19 +69,19 @@ export function convertDeviceError(
     case HardwareErrorCode.DeviceFwException:
       return new HardwareErrors.FirmwareVersionTooLow({ payload });
     case HardwareErrorCode.DeviceUnexpectedMode:
-      if (
-        typeof msg === 'string' &&
-        msg.indexOf('ui-device_bootloader_mode') !== -1
-      ) {
-        return new HardwareErrors.NotInBootLoaderMode({ payload });
-      }
       return new HardwareErrors.UnknownHardwareError({ payload });
+    case HardwareErrorCode.NotAllowInBootloaderMode:
+      return new HardwareErrors.NotInBootLoaderMode({ payload });
+    // case HardwareErrorCode.RequiredButInBootloaderMode:
+    //   return new HardwareErrors.NotInBootLoaderMode({ payload });
     case HardwareErrorCode.DeviceCheckDeviceIdError:
       return new HardwareErrors.DeviceNotSame({ payload });
     case HardwareErrorCode.DeviceNotFound:
       return new HardwareErrors.DeviceNotFound({ payload });
-    case HardwareErrorCode.DeviceUnexpectedBootloaderMode:
-      return new HardwareErrors.NotInBootLoaderMode({ payload });
+    case HardwareErrorCode.DeviceInitializeFailed:
+      return new HardwareErrors.DeviceInitializeFailed({ payload });
+    case HardwareErrorCode.DeviceDetectInBootloaderMode:
+      return new HardwareErrors.DeviceDetectInBootloaderMode({ payload });
     case HardwareErrorCode.DeviceInterruptedFromOutside:
       return new HardwareErrors.UserCancelFromOutside({ payload });
     case HardwareErrorCode.DeviceInterruptedFromUser:
@@ -83,6 +100,8 @@ export function convertDeviceError(
       return new HardwareErrors.FirmwareUpdateAutoEnterBootFailure({ payload });
     case HardwareErrorCode.FirmwareUpdateLimitOneDevice:
       return new HardwareErrors.FirmwareUpdateLimitOneDevice({ payload });
+    case HardwareErrorCode.UseDesktopToUpdateFirmware:
+      return new HardwareErrors.UseDesktopToUpdateFirmware({ payload });
     case HardwareErrorCode.CallMethodNeedUpgradeFirmware:
       return new HardwareErrors.FirmwareVersionTooLow({ payload });
     case HardwareErrorCode.NewFirmwareUnRelease:
@@ -94,9 +113,9 @@ export function convertDeviceError(
     case HardwareErrorCode.BlePermissionError:
       return new HardwareErrors.NeedBluetoothTurnedOn({ payload });
     case HardwareErrorCode.BleLocationError:
-      return new HardwareErrors.NeedBluetoothPermissions({ message: msg });
+      return new HardwareErrors.NeedBluetoothPermissions({ payload });
     case HardwareErrorCode.BleLocationServicesDisabled:
-      return new HardwareErrors.BleLocationServiceError({ message: msg });
+      return new HardwareErrors.BleLocationServiceError({ payload });
     case HardwareErrorCode.BleDeviceNotBonded:
       return new HardwareErrors.DeviceNotBonded({ payload });
     case HardwareErrorCode.BleDeviceBondError:
@@ -104,18 +123,25 @@ export function convertDeviceError(
     case HardwareErrorCode.BleWriteCharacteristicError:
       return new HardwareErrors.BleWriteCharacteristicError({ payload });
     case HardwareErrorCode.BleScanError:
-      return new HardwareErrors.BleScanError({ message: msg });
+      return new HardwareErrors.BleScanError({ payload });
     case HardwareErrorCode.BleAlreadyConnected:
       return new HardwareErrors.BleAlreadyConnectedError({ payload });
+    case HardwareErrorCode.BleCharacteristicNotifyChangeFailure:
+      return new HardwareErrors.BleCharacteristicNotifyChangeFailure({
+        payload,
+      });
     case HardwareErrorCode.RuntimeError:
-      if (msg.indexOf('EIP712 blind sign is disabled') !== -1) {
+      if (message.indexOf('EIP712 blind sign is disabled') !== -1) {
         return new HardwareErrors.OpenBlindSign({ payload });
       }
-      if (msg.indexOf('Unknown message') !== -1) {
+      if (message.indexOf('Unknown message') !== -1) {
         return new HardwareErrors.UnknownMethod({ payload });
       }
-      if (msg.indexOf('Failure_UnexpectedMessage') !== -1) {
-        return new HardwareErrors.UnknownMethod({ payload });
+      if (message.indexOf('Forbidden key path') !== -1) {
+        return new HardwareErrors.ForbiddenKeyPathError({ payload });
+      }
+      if (message.includes('string overflow')) {
+        return new HardwareErrors.StringOverflowError({ payload });
       }
       return new HardwareErrors.UnknownHardwareError({ payload });
     case HardwareErrorCode.PinInvalid:
@@ -129,6 +155,8 @@ export function convertDeviceError(
     case HardwareErrorCode.DeviceNotOpenedPassphrase:
       return new HardwareErrors.DeviceNotOpenedPassphrase({ payload });
     case HardwareErrorCode.PinCancelled:
+      return new HardwareErrors.PinCancelled({ payload });
+    case HardwareErrorCode.UnexpectPassphrase:
     case HardwareErrorCode.ActionCancelled:
       return new HardwareErrors.UserCancel({ payload });
     case HardwareErrorCode.BridgeNotInstalled:
@@ -139,7 +167,7 @@ export function convertDeviceError(
       return new HardwareErrors.BridgeNetworkError({ payload });
     case HardwareErrorCode.BridgeTimeoutError:
       if (platformEnv.isDesktop) {
-        window.desktopApi.reloadBridgeProcess();
+        globalThis.desktopApi.reloadBridgeProcess();
       }
       return new HardwareErrors.BridgeTimeoutError({ payload });
     case HardwareErrorCode.PollingTimeout:
@@ -154,6 +182,14 @@ export function convertDeviceError(
       return new HardwareErrors.IncompleteFileError({ payload });
     case HardwareErrorCode.NotInSigningMode:
       return new HardwareErrors.NotInSigningModeError({ payload });
+    case HardwareErrorCode.DataOverload:
+      return new HardwareErrors.DeviceDataOverload({ payload });
+    case HardwareErrorCode.BridgeDeviceDisconnected:
+      return new HardwareErrors.DeviceDisconnectedError({ payload });
+
+    // Bridge error
+    case 'ERR_BAD_REQUEST':
+      return new HardwareErrors.HardwareCommunicationError({ payload });
     default:
       return new HardwareErrors.UnknownHardwareError({ payload });
 
@@ -174,10 +210,54 @@ export async function convertDeviceResponse<T>(
   } catch (e) {
     const error: Error | undefined = e as Error;
     console.error(error);
-    throw new HardwareErrors.OneKeyHardwareError(error);
+    const hardwareCommonError = new HardwareErrors.OneKeyHardwareError(error);
+    throw hardwareCommonError;
   }
   if (!response.success) {
     throw convertDeviceError(response.payload);
   }
   return response.payload;
+}
+
+export function isHardwareErrorByCode({
+  error,
+  code,
+}: {
+  error: IOneKeyError | undefined;
+  code: number | Array<number | string> | undefined;
+}) {
+  // HardwareErrorCode
+  const isHardwareError =
+    error instanceof HardwareErrors.OneKeyHardwareError ||
+    error?.className === EOneKeyErrorClassNames.OneKeyHardwareError ||
+    error?.className === EOneKeyErrorClassNames.UnknownHardwareError ||
+    error?.$isHardwareError === true;
+
+  const isCodeMatch = (errorCode: number | undefined | string) =>
+    errorCode === code ||
+    (isArray(code) && !isNil(errorCode) && code.includes(errorCode));
+
+  return (
+    error &&
+    isHardwareError &&
+    (isCodeMatch(error?.code) || isCodeMatch(error?.payload?.code))
+  );
+}
+
+export function isHardwareInterruptErrorByCode({
+  error,
+}: {
+  error: IOneKeyError | undefined;
+}) {
+  return isHardwareErrorByCode({
+    error,
+    code: [
+      HardwareErrorCode.NewFirmwareForceUpdate,
+      HardwareErrorCode.BridgeNotInstalled,
+      HardwareErrorCode.BridgeTimeoutError,
+      HardwareErrorCode.NotAllowInBootloaderMode, // 116
+      HardwareErrorCode.DeviceUnexpectedMode, // 102
+      HardwareErrorCode.BridgeDeviceDisconnected, // 817
+    ],
+  });
 }

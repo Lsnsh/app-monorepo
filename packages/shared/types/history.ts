@@ -1,8 +1,14 @@
-import type { ILocaleIds } from '@onekeyhq/shared/src/locale';
+import type { ETranslations } from '@onekeyhq/shared/src/locale';
 
 import type { IAccountNFT } from './nft';
+import type { IStakingInfo } from './staking';
 import type { IToken } from './token';
-import type { EDecodedTxStatus, IDecodedTx, IReplacedTxType } from './tx';
+import type { EReplaceTxType, IDecodedTx } from './tx';
+
+export enum EHistoryTxDetailsBlock {
+  Flow = 'Flow',
+  Attributes = 'Attributes',
+}
 
 export enum EOnChainHistoryTransferType {
   Transfer,
@@ -12,6 +18,7 @@ export enum EOnChainHistoryTransferType {
 export enum EOnChainHistoryTxStatus {
   Failed = '0',
   Success = '1',
+  Pending = '2',
 }
 
 export enum EOnChainHistoryTxType {
@@ -24,6 +31,8 @@ export type IOnChainHistoryTxApprove = {
   amount: string;
   spender: string;
   token: string;
+  key: string;
+  isInfiniteAmount: boolean;
 };
 
 export type IOnChainHistoryTxTransfer = {
@@ -31,6 +40,7 @@ export type IOnChainHistoryTxTransfer = {
   from: string;
   to: string;
   token: string;
+  key: string;
   amount: string;
   label: string;
   isNative?: boolean;
@@ -61,6 +71,7 @@ export type IOnChainHistoryTxUTXOOutput = {
 };
 
 export type IOnChainHistoryTx = {
+  networkId: string;
   tx: string;
   riskLevel: number;
   type: EOnChainHistoryTxType;
@@ -78,12 +89,50 @@ export type IOnChainHistoryTx = {
   value: string;
   label: string;
   confirmations?: number;
+  block?: number;
   inputs?: IOnChainHistoryTxUTXOInput[];
   outputs?: IOnChainHistoryTxUTXOOutput[];
 
   tokenApprove?: IOnChainHistoryTxApprove;
+
+  tokenActive?: {
+    token: string;
+    from: string;
+  };
+
+  contractCall?: {
+    functionName?: string;
+  };
+
   // TODO: on chain swap info
   swapInfo?: any;
+
+  // Lightning network attributes
+  description?: string;
+  preimage?: string;
+
+  // Ripple
+  destinationTag?: number;
+  ledgerIndex?: number;
+  lastLedgerSequence?: number;
+
+  // Dynex
+  paymentId?: string;
+
+  // TON
+  eventId?: string;
+
+  // Tron
+  receipt?: {
+    energyUsage?: number;
+    energyFee?: number;
+    energyUsageTotal?: number;
+    netUsage?: number;
+    netFee?: number;
+    netFeeCost?: number;
+  };
+
+  slicedData?: string;
 };
 
 export type IAccountHistoryTx = {
@@ -93,23 +142,26 @@ export type IAccountHistoryTx = {
 
   replacedPrevId?: string; // cancel speedUp replacedId
   replacedNextId?: string;
-  replacedType?: IReplacedTxType; // cancel speedUp
+  replacedType?: EReplaceTxType; // cancel speedUp
 
   decodedTx: IDecodedTx;
+  stakingInfo?: IStakingInfo;
+
+  originalId?: string; // for ton
 };
 
 export type IHistoryListSectionGroup = {
   title?: string;
-  titleKey?: ILocaleIds;
+  titleKey?: ETranslations;
   data: IAccountHistoryTx[];
 };
 
 export type IFetchAccountHistoryParams = {
   accountId: string;
   networkId: string;
-  accountAddress: string;
-  xpub?: string;
   tokenIdOnNetwork?: string;
+  isAllNetworks?: boolean;
+  isManualRefresh?: boolean;
 };
 
 export type IOnChainHistoryTxToken = {
@@ -126,10 +178,18 @@ export type IFetchAccountHistoryResp = {
 };
 
 export type IFetchHistoryTxDetailsParams = {
+  accountId: string;
   networkId: string;
   txid: string;
-  accountAddress: string;
-  status: EDecodedTxStatus;
+  withUTXOs?: boolean;
+  accountAddress?: string;
+  xpub?: string;
+};
+
+export type IFetchTxDetailsParams = {
+  networkId: string;
+  txid: string;
+  accountId: string;
 };
 
 export type IFetchHistoryTxDetailsResp = {
@@ -137,3 +197,38 @@ export type IFetchHistoryTxDetailsResp = {
   tokens: Record<string, IOnChainHistoryTxToken>; // <tokenAddress, token>
   nfts: Record<string, IOnChainHistoryTxNFT>; // <nftAddress, nft>
 };
+
+export type IHistoryTxMetaProps = {
+  decodedTx: IDecodedTx;
+  txDetails?: IOnChainHistoryTx;
+};
+
+export type IHistoryTxMetaComponents = {
+  [EHistoryTxDetailsBlock.Flow]?: (
+    props: IHistoryTxMetaProps,
+  ) => JSX.Element | null;
+  [EHistoryTxDetailsBlock.Attributes]?: (
+    props: IHistoryTxMetaProps,
+  ) => JSX.Element | null;
+};
+
+export type IAllNetworkHistoryExtraItem = {
+  networkId: string;
+  accountId: string;
+  accountAddress: string;
+  accountXpub?: string;
+};
+
+export interface IServerFetchAccountHistoryDetailParams {
+  accountId: string;
+  networkId: string;
+  txid: string;
+  accountAddress?: string;
+  xpub?: string;
+}
+
+export interface IServerFetchAccountHistoryDetailResp {
+  data: {
+    data: IFetchHistoryTxDetailsResp;
+  };
+}

@@ -1,14 +1,17 @@
-import { isNil, uniqBy } from 'lodash';
+import { assign, isEmpty, isNil, merge, uniqBy } from 'lodash';
 
 import { backgroundMethod } from '@onekeyhq/shared/src/background/backgroundDecorators';
+import { OneKeyInternalError } from '@onekeyhq/shared/src/errors';
+import { buildAccountLocalAssetsKey } from '@onekeyhq/shared/src/utils/accountUtils';
 import type { IAccountHistoryTx } from '@onekeyhq/shared/types/history';
 import type { IDecodedTxAction } from '@onekeyhq/shared/types/tx';
 import { EDecodedTxStatus } from '@onekeyhq/shared/types/tx';
 
-import { SimpleDbEntityBase } from './SimpleDbEntityBase';
+import { SimpleDbEntityBase } from '../base/SimpleDbEntityBase';
 
 export interface ILocalHistory {
-  pendingTxs: IAccountHistoryTx[];
+  pendingTxs: Record<string, IAccountHistoryTx[]>; // Record<networkId_accountAddress/xpub, IAccountHistoryTx[]>
+  confirmedTxs: Record<string, IAccountHistoryTx[]>; // Record<networkId_accountAddress/xpub, IAccountHistoryTx[]>
 }
 
 export class SimpleDbEntityLocalHistory extends SimpleDbEntityBase<ILocalHistory> {
@@ -17,114 +20,381 @@ export class SimpleDbEntityLocalHistory extends SimpleDbEntityBase<ILocalHistory
   override enableCache = false;
 
   @backgroundMethod()
-  public async saveLocalHistoryPendingTxs(txs: IAccountHistoryTx[]) {
-    if (!txs || !txs.length) return;
-    const now = Date.now();
+  public async getLocalHistoryTxById({
+    networkId,
+    accountAddress,
+    xpub,
+    historyId,
+  }: {
+    networkId: string;
+    accountAddress?: string;
+    xpub?: string;
+    historyId: string;
+  }) {
+    if (!accountAddress && !xpub) {
+      throw new OneKeyInternalError('accountAddress or xpub is required');
+    }
+
+    const key = buildAccountLocalAssetsKey({ networkId, accountAddress, xpub });
+
     const rawData = await this.getRawData();
 
-    let pendingTxs = rawData?.pendingTxs ?? [];
+    const pendingTxs = rawData?.pendingTxs?.[key] || [];
+    const confirmedTxs = rawData?.confirmedTxs?.[key] || [];
 
-    pendingTxs = uniqBy(
-      [
-        ...txs.map((tx) => ({
-          ...tx,
-          decodedTx: {
-            ...tx.decodedTx,
-            createdAt: now,
-            updatedAt: now,
-          },
-        })),
-        ...pendingTxs,
-      ],
-      (tx) => tx.id,
-    ).filter((tx) => tx.decodedTx.status === EDecodedTxStatus.Pending);
+    return [...pendingTxs, ...confirmedTxs].find((tx) => tx.id === historyId);
+  }
 
-    return this.setRawData({
-      ...rawData,
-      pendingTxs,
+  @backgroundMethod()
+  public async saveLocalHistoryPendingTxs({
+    networkId,
+    accountAddress,
+    xpub,
+    txs,
+  }: {
+    networkId: string;
+    accountAddress?: string;
+    xpub?: string;
+    txs: IAccountHistoryTx[];
+  }) {
+    return this.saveLocalHistoryTxs({
+      networkId,
+      accountAddress,
+      xpub,
+      pendingTxs: txs,
     });
   }
 
   @backgroundMethod()
-  public async updateLocalHistoryPendingTxs(
-    onChainHistoryTxs: IAccountHistoryTx[],
-  ) {
-    if (!onChainHistoryTxs || !onChainHistoryTxs.length) return;
+  public async saveLocalHistoryConfirmedTxs({
+    networkId,
+    accountAddress,
+    xpub,
+    txs,
+  }: {
+    networkId: string;
+    accountAddress?: string;
+    xpub?: string;
+    txs: IAccountHistoryTx[];
+  }) {
+    return this.saveLocalHistoryTxs({
+      networkId,
+      accountAddress,
+      xpub,
+      confirmedTxs: txs,
+    });
+  }
+
+  @backgroundMethod()
+  public async updateLocalHistoryConfirmedTxs({
+    networkId,
+    accountAddress,
+    xpub,
+    confirmedTxsToSave,
+    confirmedTxsToRemove,
+  }: {
+    networkId: string;
+    accountAddress?: string;
+    xpub?: string;
+    confirmedTxsToSave?: IAccountHistoryTx[];
+    confirmedTxsToRemove?: IAccountHistoryTx[];
+  }) {
+    if (!accountAddress && !xpub) {
+      throw new OneKeyInternalError('accountAddress or xpub is required');
+    }
+
+    if (isEmpty(confirmedTxsToSave) && isEmpty(confirmedTxsToRemove)) return;
+
     const rawData = await this.getRawData();
 
-    const pendingTxs = rawData?.pendingTxs;
+    const key = buildAccountLocalAssetsKey({ networkId, accountAddress, xpub });
+
+    let finalConfirmedTxs = rawData?.confirmedTxs?.[key] || [];
+
+    finalConfirmedTxs = uniqBy(
+      [...(confirmedTxsToSave ?? []), ...finalConfirmedTxs],
+      (tx) => tx.id,
+    );
+
+    if (confirmedTxsToRemove && !isEmpty(confirmedTxsToRemove)) {
+      finalConfirmedTxs = finalConfirmedTxs.filter(
+        (tx) => !confirmedTxsToRemove.find((item) => item.id === tx.id),
+      );
+    }
+
+    const mergedConfirmedTxs = assign({}, rawData?.confirmedTxs, {
+      [key]: finalConfirmedTxs.slice(0, 50),
+    });
+
+    const pendingTxs = rawData?.pendingTxs || {};
+
+    return this.setRawData({
+      ...(rawData ?? {}),
+      pendingTxs,
+      confirmedTxs: mergedConfirmedTxs,
+    });
+  }
+
+  @backgroundMethod()
+  public async saveLocalHistoryTxs({
+    networkId,
+    accountAddress,
+    xpub,
+    pendingTxs,
+    confirmedTxs,
+  }: {
+    networkId: string;
+    accountAddress?: string;
+    xpub?: string;
+    pendingTxs?: IAccountHistoryTx[];
+    confirmedTxs?: IAccountHistoryTx[];
+  }) {
+    if (!accountAddress && !xpub) {
+      throw new OneKeyInternalError('accountAddress or xpub is required');
+    }
+
+    const key = buildAccountLocalAssetsKey({ networkId, accountAddress, xpub });
+
+    if (isEmpty(pendingTxs) && isEmpty(confirmedTxs)) return;
+    const now = Date.now();
+    const rawData = await this.getRawData();
+
+    let finalPendingTxs = rawData?.pendingTxs[key] ?? [];
+    let finalConfirmedTxs = rawData?.confirmedTxs[key] ?? [];
+
+    if (pendingTxs) {
+      finalPendingTxs = uniqBy(
+        [
+          ...pendingTxs.map((tx) => ({
+            ...tx,
+            decodedTx: {
+              ...tx.decodedTx,
+              createdAt: now,
+              updatedAt: now,
+            },
+          })),
+          ...finalPendingTxs,
+        ],
+        (tx) => tx.id,
+      ).filter((tx) => tx.decodedTx.status === EDecodedTxStatus.Pending);
+    }
+
+    if (confirmedTxs) {
+      finalConfirmedTxs = uniqBy(
+        [...confirmedTxs, ...finalConfirmedTxs],
+        (tx) => tx.id,
+      ).filter((tx) => tx.decodedTx.status !== EDecodedTxStatus.Pending);
+    }
+
+    return this.setRawData({
+      ...(rawData ?? {}),
+      pendingTxs: assign({}, rawData?.pendingTxs, { [key]: finalPendingTxs }),
+      confirmedTxs: assign({}, rawData?.confirmedTxs, {
+        [key]: finalConfirmedTxs.slice(0, 50),
+      }),
+    });
+  }
+
+  @backgroundMethod()
+  public async updateLocalHistoryPendingTxs({
+    networkId,
+    accountAddress,
+    xpub,
+    confirmedTxs,
+    onChainHistoryTxs,
+    pendingTxs: pendingTxsFromOut,
+  }: {
+    networkId: string;
+    accountAddress?: string;
+    xpub?: string;
+    confirmedTxs?: IAccountHistoryTx[];
+    onChainHistoryTxs?: IAccountHistoryTx[];
+    pendingTxs?: IAccountHistoryTx[];
+  }) {
+    if (!accountAddress && !xpub) {
+      throw new OneKeyInternalError('accountAddress or xpub is required');
+    }
+
+    const key = buildAccountLocalAssetsKey({ networkId, accountAddress, xpub });
+
+    const rawData = await this.getRawData();
+
+    if (pendingTxsFromOut) {
+      if (isEmpty(pendingTxsFromOut) && isEmpty(rawData?.pendingTxs[key]))
+        return;
+
+      return this.setRawData({
+        ...rawData,
+        confirmedTxs: rawData?.confirmedTxs || {},
+        pendingTxs: assign({}, rawData?.pendingTxs, {
+          [key]: pendingTxsFromOut,
+        }),
+      });
+    }
+
+    if (isEmpty(confirmedTxs) && isEmpty(onChainHistoryTxs)) return;
+
+    const pendingTxs = rawData?.pendingTxs?.[key] || [];
 
     if (!pendingTxs || !pendingTxs.length) return;
 
     const newPendingTxs: IAccountHistoryTx[] = [];
-
-    for (const tx of pendingTxs) {
-      const onChainHistoryTx = onChainHistoryTxs.find(
-        (item) => item.id === tx.id,
+    for (const pendingTx of pendingTxs) {
+      const onChainHistoryTx = onChainHistoryTxs?.find(
+        (item) =>
+          item.id === pendingTx.id ||
+          (item.originalId && item.originalId === pendingTx.id),
       );
-      if (
-        !onChainHistoryTx ||
-        onChainHistoryTx.decodedTx.status === EDecodedTxStatus.Pending
-      ) {
-        newPendingTxs.push(tx);
+
+      const confirmedTx = confirmedTxs?.find(
+        (item) =>
+          item.id === pendingTx.id ||
+          (item.originalId && item.originalId === pendingTx.id),
+      );
+
+      if (!onChainHistoryTx && !confirmedTx) {
+        newPendingTxs.push(pendingTx);
       }
     }
 
     return this.setRawData({
       ...rawData,
-      pendingTxs: newPendingTxs,
+      confirmedTxs: rawData?.confirmedTxs || {},
+      pendingTxs: assign({}, rawData?.pendingTxs, { [key]: newPendingTxs }),
     });
   }
 
   @backgroundMethod()
-  public async getAccountLocalHistoryPendingTxs(params: {
-    accountId: string;
-    networkId: string;
-    tokenIdOnNetwork?: string;
-  }) {
-    const { accountId, networkId, tokenIdOnNetwork } = params;
-    const pendingTxs = (await this.getRawData())?.pendingTxs || [];
-    let accountPendingTxs = this._getAccountLocalHistoryPendingTxs({
-      pendingTxs,
-      accountId,
-      networkId,
+  public async getAccountsLocalHistoryPendingTxs(
+    params: {
+      networkId: string;
+      accountAddress: string;
+      xpub?: string;
+      tokenIdOnNetwork?: string;
+    }[],
+  ) {
+    params.forEach(({ accountAddress, xpub }) => {
+      if (!accountAddress && !xpub) {
+        throw new OneKeyInternalError('accountAddress or xpub is required');
+      }
     });
 
-    accountPendingTxs.sort(
-      (b, a) =>
-        (a.decodedTx.updatedAt ?? a.decodedTx.createdAt ?? 0) -
-        (b.decodedTx.updatedAt ?? b.decodedTx.createdAt ?? 0),
+    const pendingTxs = (await this.getRawData())?.pendingTxs;
+
+    let accountsPendingTxs = params.flatMap(
+      ({ networkId, accountAddress, xpub }) => {
+        const key = buildAccountLocalAssetsKey({
+          networkId,
+          accountAddress,
+          xpub,
+        });
+        return pendingTxs?.[key] ?? [];
+      },
     );
 
-    if (!isNil(tokenIdOnNetwork)) {
-      accountPendingTxs = accountPendingTxs.filter(
-        (tx) =>
-          ([] as IDecodedTxAction[])
-            .concat(tx.decodedTx.actions)
-            .concat(tx.decodedTx.outputActions || [])
-            .filter(
-              (action) =>
-                action &&
-                this._checkIsActionIncludesToken({
-                  historyTx: tx,
-                  action,
-                  tokenIdOnNetwork,
-                }),
-            ).length > 0,
-      );
+    accountsPendingTxs = this._arrangeLocalTxs({
+      txs: accountsPendingTxs,
+    });
+
+    return accountsPendingTxs;
+  }
+
+  @backgroundMethod()
+  public async getAccountLocalHistoryPendingTxs(params: {
+    networkId: string;
+    accountAddress: string;
+    xpub?: string;
+    tokenIdOnNetwork?: string;
+  }) {
+    const { accountAddress, xpub, networkId, tokenIdOnNetwork } = params;
+
+    if (!accountAddress && !xpub) {
+      throw new OneKeyInternalError('accountAddress or xpub is required');
     }
+
+    const key = buildAccountLocalAssetsKey({ networkId, accountAddress, xpub });
+
+    let accountPendingTxs = (await this.getRawData())?.pendingTxs[key] ?? [];
+
+    accountPendingTxs = this._arrangeLocalTxs({
+      txs: accountPendingTxs,
+      tokenIdOnNetwork,
+    });
 
     return accountPendingTxs;
   }
 
   @backgroundMethod()
-  async getPendingNonceList(props: {
-    accountId: string;
+  public async getAccountLocalHistoryConfirmedTxs(params: {
     networkId: string;
+    accountAddress?: string;
+    xpub?: string;
+    tokenIdOnNetwork?: string;
+  }) {
+    const { accountAddress, xpub, networkId, tokenIdOnNetwork } = params;
+
+    if (!accountAddress && !xpub) {
+      throw new OneKeyInternalError('accountAddress or xpub is required');
+    }
+
+    const key = buildAccountLocalAssetsKey({ networkId, accountAddress, xpub });
+
+    let accountConfirmedTxs =
+      (await this.getRawData())?.confirmedTxs[key] || [];
+
+    accountConfirmedTxs = this._arrangeLocalTxs({
+      txs: accountConfirmedTxs,
+      tokenIdOnNetwork,
+    });
+
+    return accountConfirmedTxs;
+  }
+
+  @backgroundMethod()
+  public async getAccountsLocalHistoryConfirmedTxs(
+    params: {
+      networkId: string;
+      accountAddress?: string;
+      xpub?: string;
+      tokenIdOnNetwork?: string;
+    }[],
+  ) {
+    params.forEach(({ accountAddress, xpub }) => {
+      if (!accountAddress && !xpub) {
+        throw new OneKeyInternalError('accountAddress or xpub is required');
+      }
+    });
+
+    const confirmedTxs = (await this.getRawData())?.confirmedTxs;
+
+    let accountsConfirmedTxs = params.flatMap(
+      ({ networkId, accountAddress, xpub }) => {
+        const key = buildAccountLocalAssetsKey({
+          networkId,
+          accountAddress,
+          xpub,
+        });
+        return confirmedTxs?.[key] ?? [];
+      },
+    );
+
+    accountsConfirmedTxs = this._arrangeLocalTxs({
+      txs: accountsConfirmedTxs,
+    });
+
+    return accountsConfirmedTxs;
+  }
+
+  @backgroundMethod()
+  async getPendingNonceList(props: {
+    networkId: string;
+    accountAddress: string;
+    xpub?: string;
   }): Promise<number[]> {
-    const { accountId, networkId } = props;
+    const { accountAddress, xpub, networkId } = props;
     const pendingTxs = await this.getAccountLocalHistoryPendingTxs({
-      accountId,
+      accountAddress,
+      xpub,
       networkId,
     });
     const nonceList = pendingTxs.map((tx) => tx.decodedTx.nonce);
@@ -133,8 +403,9 @@ export class SimpleDbEntityLocalHistory extends SimpleDbEntityBase<ILocalHistory
 
   @backgroundMethod()
   async getMaxPendingNonce(props: {
-    accountId: string;
     networkId: string;
+    accountAddress: string;
+    xpub?: string;
   }): Promise<number | null> {
     const nonceList = await this.getPendingNonceList(props);
     if (nonceList.length) {
@@ -147,15 +418,62 @@ export class SimpleDbEntityLocalHistory extends SimpleDbEntityBase<ILocalHistory
     return null;
   }
 
-  _getAccountLocalHistoryPendingTxs(params: {
-    accountId: string;
+  @backgroundMethod()
+  async getMinPendingNonce(props: {
     networkId: string;
-    pendingTxs: IAccountHistoryTx[];
+    accountAddress: string;
+    xpub?: string;
+  }): Promise<number | null> {
+    const nonceList = await this.getPendingNonceList(props);
+    if (nonceList.length) {
+      const nonce = Math.min(...nonceList);
+      if (Number.isNaN(nonce) || nonce === Infinity || nonce === -Infinity) {
+        return null;
+      }
+      return nonce;
+    }
+    return null;
+  }
+
+  @backgroundMethod()
+  async clearLocalHistoryPendingTxs() {
+    return this.setRawData(({ rawData }) => {
+      const confirmedTxs = rawData?.confirmedTxs || {};
+      return {
+        ...(rawData ?? {}),
+        pendingTxs: {},
+        confirmedTxs,
+      };
+    });
+  }
+
+  @backgroundMethod()
+  async clearLocalHistory() {
+    return this.setRawData({
+      pendingTxs: {},
+      confirmedTxs: {},
+    });
+  }
+
+  _getAccountLocalHistoryTxs(params: {
+    networkId: string;
+    accountAddress: string;
+    xpub?: string;
+    txs: IAccountHistoryTx[];
   }) {
-    const { accountId, networkId, pendingTxs } = params;
-    return pendingTxs.filter(
+    const { accountAddress, xpub, networkId, txs } = params;
+
+    if (xpub) {
+      return txs.filter(
+        (tx) =>
+          tx.decodedTx.xpub?.toLowerCase() === xpub.toLowerCase() &&
+          tx.decodedTx.networkId === networkId,
+      );
+    }
+
+    return txs.filter(
       (tx) =>
-        tx.decodedTx.accountId === accountId &&
+        tx.decodedTx.owner.toLowerCase() === accountAddress.toLowerCase() &&
         tx.decodedTx.networkId === networkId,
     );
   }
@@ -180,5 +498,39 @@ export class SimpleDbEntityLocalHistory extends SimpleDbEntityBase<ILocalHistory
       (historyTx.decodedTx?.tokenIdOnNetwork === tokenIdOnNetwork &&
         tokenIdOnNetwork)
     );
+  }
+
+  _arrangeLocalTxs({
+    txs,
+    tokenIdOnNetwork,
+  }: {
+    txs: IAccountHistoryTx[];
+    tokenIdOnNetwork?: string;
+  }) {
+    let result = txs.sort(
+      (b, a) =>
+        (a.decodedTx.updatedAt ?? a.decodedTx.createdAt ?? 0) -
+        (b.decodedTx.updatedAt ?? b.decodedTx.createdAt ?? 0),
+    );
+
+    if (!isNil(tokenIdOnNetwork)) {
+      result = result.filter(
+        (tx) =>
+          ([] as IDecodedTxAction[])
+            .concat(tx.decodedTx.actions)
+            .concat(tx.decodedTx.outputActions || [])
+            .filter(
+              (action) =>
+                action &&
+                this._checkIsActionIncludesToken({
+                  historyTx: tx,
+                  action,
+                  tokenIdOnNetwork,
+                }),
+            ).length > 0,
+      );
+    }
+
+    return result;
   }
 }

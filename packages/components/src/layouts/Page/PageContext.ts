@@ -13,10 +13,9 @@ export interface IPageFooterRef {
 export interface IPageContentOptions {
   safeAreaEnabled?: boolean;
   scrollEnabled?: boolean;
-  pageRef: RefObject<IScrollViewRef>;
-  pageOffsetRef: MutableRefObject<NativeScrollPoint>;
-  footerRef: React.MutableRefObject<IPageFooterRef>;
+  footerRef: MutableRefObject<IPageFooterRef>;
   scrollProps?: Omit<IScrollViewProps, 'children'>;
+  closeExtraRef?: MutableRefObject<{ flag?: string }>;
 }
 
 type IPageContentProps = IPageContentOptions;

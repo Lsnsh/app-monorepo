@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 
 import { StyleSheet } from 'react-native';
 
@@ -10,15 +10,14 @@ import {
   SizableText,
   Stack,
   TextArea,
-  Toast,
   YStack,
 } from '@onekeyhq/components';
 import type { IPageNavigationProp } from '@onekeyhq/components/src/layouts/Navigation';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import type { ITabDeveloperParamList } from '@onekeyhq/shared/src/routes';
 import { ETabDeveloperRoutes } from '@onekeyhq/shared/src/routes';
-import { EAppSettingKey } from '@onekeyhq/shared/src/storage/appSetting';
 import appStorage from '@onekeyhq/shared/src/storage/appStorage';
+import { EAppSyncStorageKeys } from '@onekeyhq/shared/src/storage/syncStorage';
 import { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
 
 import backgroundApiProxy from '../../../background/instance/backgroundApiProxy';
@@ -29,12 +28,12 @@ import { useActiveAccount } from '../../../states/jotai/contexts/accountSelector
 import { StartTimePanel } from '../../Setting/pages/List/DevSettingsSection/StartTimePanel';
 
 const useStorage = platformEnv.isNative
-  ? (key: EAppSettingKey, initialValue?: boolean) => {
+  ? (key: EAppSyncStorageKeys, initialValue?: boolean) => {
       const [data, setData] = useState(
-        initialValue || appStorage.getSettingBoolean(key),
+        initialValue || appStorage.syncStorage.getBoolean(key),
       );
       const setNewData = (value: boolean) => {
-        appStorage.setSetting(key, value);
+        appStorage.syncStorage.set(key, value);
         setData(value);
       };
       return [data, setNewData];
@@ -75,30 +74,6 @@ function StartTimePanelContainer() {
   );
 }
 
-function ExternalAccountSign() {
-  const { activeAccount } = useActiveAccount({ num: 0 });
-  return (
-    <PartContainer title="ExternalAccountSign">
-      <Button
-        onPress={async () => {
-          const r =
-            await backgroundApiProxy.serviceWalletConnect.testExternalAccountPersonalSign(
-              {
-                networkId: activeAccount.network?.id || '',
-                accountId: activeAccount.account?.id || '',
-              },
-            );
-          Toast.success({
-            title: `Personal Sign success: ${r}`,
-          });
-        }}
-      >
-        personal_sign: ({activeAccount.account?.address})
-      </Button>
-    </PartContainer>
-  );
-}
-
 function ConnectWalletConnectDapp() {
   const [val, setVal] = useState('');
   return (
@@ -122,12 +97,21 @@ function ConnectWalletConnectDapp() {
   );
 }
 
+function TestRefreshCmp() {
+  const {
+    activeAccount: { accountName },
+  } = useActiveAccount({ num: 0 });
+  console.log('TestRefresh refresh', accountName);
+  return <Button>TestRefresh: {accountName}</Button>;
+}
+const TestRefresh = memo(TestRefreshCmp);
+
 const TabDeveloper = () => {
   const navigation =
     useAppNavigation<IPageNavigationProp<ITabDeveloperParamList>>();
 
   // @ts-expect-error
-  const [rrtStatus, changeRRTStatus] = useStorage(EAppSettingKey.rrt);
+  const [rrtStatus, changeRRTStatus] = useStorage(EAppSyncStorageKeys.rrt);
 
   return (
     <AccountSelectorProviderMirror
@@ -165,6 +149,16 @@ const TabDeveloper = () => {
               </Button>
             </PartContainer>
 
+            <PartContainer title="Debugger Signature Records">
+              <Button
+                onPress={() => {
+                  navigation.push(ETabDeveloperRoutes.SignatureRecord);
+                }}
+              >
+                Signature Records
+              </Button>
+            </PartContainer>
+
             <PartContainer title="Debug Tools">
               <Button
                 onPress={() => {
@@ -186,7 +180,7 @@ const TabDeveloper = () => {
                         );
                       }
                     }
-                    window.location.reload();
+                    globalThis.location.reload();
                   }
                 }}
               >
@@ -206,11 +200,19 @@ const TabDeveloper = () => {
               </Button>
             </PartContainer>
 
-            <PartContainer title="Commit Hash">
-              <SizableText>{process.env.COMMITHASH}</SizableText>
-            </PartContainer>
+            {platformEnv.isNative ? (
+              <PartContainer title="NetworkLogger">
+                <Button
+                  onPress={() => {
+                    navigation.push(ETabDeveloperRoutes.NetworkLogger);
+                  }}
+                >
+                  NetworkLogger
+                </Button>
+              </PartContainer>
+            ) : null}
 
-            <PartContainer title="Commit Hash">
+            <PartContainer title="Async Import Test">
               <Button
                 onPress={async () => {
                   const { test } = await import('./asyncImportTest');
@@ -222,7 +224,7 @@ const TabDeveloper = () => {
             </PartContainer>
             <StartTimePanelContainer />
             <ConnectWalletConnectDapp />
-            <ExternalAccountSign />
+            <TestRefresh />
             {/* <WalletConnectModalNative2 /> */}
           </ScrollView>
         </Page.Body>

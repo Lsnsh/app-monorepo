@@ -1,39 +1,40 @@
 import { BigNumber } from 'bignumber.js';
 
-import { InsufficientBalance } from '@onekeyhq/shared/src/errors';
+import { MAX_UINT64_VALUE } from '@onekeyhq/core/src/consts';
+import { LowerTransactionAmountError } from '@onekeyhq/shared/src/errors';
 
 import { CONFIRMATION_COUNT } from './constant';
 import { UnspentOutput } from './types';
 
 import type { RestAPIClient } from './clientRestApi';
-import type { UTXOResponse, UnspentOutputInfo } from './types';
+import type { IKaspaUTXOResponse, IKaspaUnspentOutputInfo } from './types';
 
-function sortUXTO(utxos: UnspentOutputInfo[]) {
+function sortUXTO(utxos: IKaspaUnspentOutputInfo[]) {
   return utxos.sort(
-    (a: UnspentOutputInfo, b: UnspentOutputInfo): number =>
+    (a: IKaspaUnspentOutputInfo, b: IKaspaUnspentOutputInfo): number =>
       a.blockDaaScore - b.blockDaaScore ||
-      b.satoshis - a.satoshis ||
+      new BigNumber(b.satoshis).minus(a.satoshis).toNumber() ||
       a.txid.localeCompare(b.txid) ||
       a.vout - b.vout,
   );
 }
 
-function formatUtxo(entries: UTXOResponse[]): UnspentOutputInfo[] {
-  const result: UnspentOutputInfo[] = [];
+function formatUtxo(entries: IKaspaUTXOResponse[]): IKaspaUnspentOutputInfo[] {
+  const result: IKaspaUnspentOutputInfo[] = [];
 
   for (const entry of entries) {
     const { transactionId, index } = entry.outpoint;
     const { address, utxoEntry } = entry;
     const { amount, scriptPublicKey, blockDaaScore } = utxoEntry;
 
-    const item: UnspentOutputInfo = {
+    const item: IKaspaUnspentOutputInfo = {
       txid: transactionId,
       address,
       vout: index,
       scriptPubKey: scriptPublicKey.scriptPublicKey,
       scriptPublicKeyVersion: scriptPublicKey.version ?? 0,
-      satoshis: +amount,
-      blockDaaScore: parseInt(blockDaaScore),
+      satoshis: Array.isArray(amount) ? amount[0] : amount,
+      blockDaaScore: parseInt(blockDaaScore, 10),
     };
     result.push(item);
   }
@@ -59,18 +60,20 @@ export async function queryConfirmUTXOs(
 }
 
 export function selectUTXOs(
-  confirmUtxos: UnspentOutputInfo[],
-  txAmount: number,
+  confirmUtxos: IKaspaUnspentOutputInfo[],
+  txAmount: BigNumber,
+  prioritys?: { satoshis: boolean },
 ): {
   utxoIds: string[];
-  utxos: UnspentOutputInfo[];
+  utxos: IKaspaUnspentOutputInfo[];
+  prioritys?: { satoshis: boolean };
   mass: number;
 } {
   const sortedUtxos = sortUXTO(confirmUtxos);
 
-  const selectedUtxos: UnspentOutputInfo[] = [];
+  const selectedUtxos: IKaspaUnspentOutputInfo[] = [];
   const utxoIds: string[] = [];
-  let totalVal = 0;
+  let totalVal = new BigNumber(0);
   let mass = 0;
 
   for (const info of sortedUtxos) {
@@ -79,15 +82,18 @@ export function selectUTXOs(
     utxoIds.push(utxo.id);
     selectedUtxos.push(info);
     mass += utxo.mass;
-    totalVal += utxo.satoshis;
+    totalVal = totalVal.plus(utxo.satoshis);
     // }
-    if (totalVal >= txAmount) break;
+    if (totalVal.isGreaterThanOrEqualTo(txAmount)) break;
   }
 
-  if (totalVal < txAmount)
-    throw new InsufficientBalance({
-      message: `Insufficient balance - need: ${txAmount} KAS, available: ${txAmount} KAS`,
-    });
+  if (totalVal.isLessThan(txAmount)) throw new LowerTransactionAmountError();
+
+  // Uint64 overflow
+  if (totalVal.isGreaterThan(MAX_UINT64_VALUE)) {
+    // utxo amount is too large
+    throw new Error('utxo amount is too large');
+  }
 
   return {
     utxoIds,

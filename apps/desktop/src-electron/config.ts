@@ -8,35 +8,55 @@ export const cspRules = [
 ];
 
 export const ipcMessageKeys = {
+  IS_DEV: 'IS_DEV',
+  // DEV Only
+  APP_DEV_ONLY_API: 'electronAppMainProcessDevOnly/api',
+
   // Updater
+  SHOW_ABOUT_WINDOW: 'showAboutWindow',
   UPDATE_CHECK: 'update/check',
   UPDATE_SETTINGS: 'update/settings',
   UPDATE_CLEAR_SETTINGS: 'update/clearSettings',
   UPDATE_DOWNLOAD: 'update/download',
+  UPDATE_VERIFY: 'update/verify',
+  UPDATE_VERIFIED: 'update/verified',
   UPDATE_INSTALL: 'update/install',
+  UPDATE_CLEAR: 'update/clear',
   UPDATE_CHECKING: 'update/checking',
   UPDATE_AVAILABLE: 'update/available',
   UPDATE_NOT_AVAILABLE: 'update/not-available',
   UPDATE_ERROR: 'update/error',
   UPDATE_DOWNLOADING: 'update/downloading',
   UPDATE_DOWNLOADED: 'update/downloaded',
+  CHECK_FOR_UPDATES: 'update/checkForUpdates',
   TOUCH_UPDATE_RES_SUCCESS: 'touch/update-res-success',
   TOUCH_UPDATE_PROGRESS: 'touch/update-progress',
 
   // App
+  APP_VERSION: 'app/version',
   APP_STATE: 'appState',
   APP_READY: 'app/ready',
   APP_RELOAD: 'app/reload',
   APP_FOCUS: 'app/focus',
   APP_QUIT: 'app/quit',
   APP_RESTORE_MAIN_WINDOW: 'app/restoreMainWindow',
-  APP_CLEAR_WEBVIEW_DATA: 'app/clearWebViewData',
+  APP_GET_MEDIA_ACCESS_STATUS: 'app/getMediaAccessStatus',
   APP_OPEN_PREFERENCES: 'app/openPreferences',
   APP_TOGGLE_MAXIMIZE_WINDOW: 'app/toggleMaximizeWindow',
   APP_RELOAD_BRIDGE_PROCESS: 'app/reloadBridgeProcess',
   APP_SHORCUT: 'app/shortcut',
   APP_IDLE: 'app/idle',
   APP_SET_IDLE_TIME: 'app/setIdleTime',
+  APP_CHANGE_DEV_TOOLS_STATUS: 'app/changeDevTools',
+  APP_OPEN_SETTINGS: 'app/openSettings',
+  APP_CHANGE_LANGUAGE: 'app/changeLanguage',
+  APP_LOCK_NOW: 'app/lockNow',
+  APP_GET_ENV_PATH: 'app/getEnvPath',
+  APP_GET_BUNDLE_INFO: 'app/getBundleInfo',
+  APP_OPEN_LOGGER_FILE: 'app/openLoggerFile',
+
+  // Theme
+  THEME_UPDATE: 'theme/update',
 
   // Touch
   TOUCH_ID_CAN_PROMPT: 'touchId/canPrompt',
@@ -68,4 +88,10 @@ export const ipcMessageKeys = {
   // webview
   WEBVIEW_NEW_WINDOW: 'webview/newWindow',
   SET_ALLOWED_PHISHING_URLS: 'webview/setAllowedPhishingUrls',
+  CLEAR_WEBVIEW_CACHE: 'webview/clearCache',
+
+  NOTIFICATION_SHOW: 'notification/show',
+  NOTIFICATION_GET_PERMISSION: 'notification/getPermission',
+  NOTIFICATION_SET_BADGE: 'notification/setBadge',
+  NOTIFICATION_SET_BADGE_WINDOWS: 'notification/setBadge/windows',
 };

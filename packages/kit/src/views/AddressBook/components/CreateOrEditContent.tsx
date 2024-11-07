@@ -18,6 +18,9 @@ import {
   type IAddressInputValue,
 } from '@onekeyhq/kit/src/components/AddressInput';
 import { ChainSelectorInput } from '@onekeyhq/kit/src/components/ChainSelectorInput';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+
+import { usePromiseResult } from '../../../hooks/usePromiseResult';
 
 import type { IAddressItem } from '../type';
 
@@ -78,29 +81,51 @@ export const CreateOrEditContent: FC<ICreateOrEditContentProps> = ({
     [onSubmit],
   );
 
+  const { result: addressBookEnabledNetworkIds } = usePromiseResult(
+    async () => {
+      const resp =
+        await backgroundApiProxy.serviceNetwork.getAddressBookEnabledNetworks();
+      const networkIds = resp.map((o) => o.id);
+      return networkIds;
+    },
+    [],
+    { initResult: [] },
+  );
+
   return (
     <Page>
       <Page.Header title={title} headerRight={headerRight} />
       <Page.Body p="$4">
         <Form form={form}>
           <Form.Field
-            label="Network"
+            label={intl.formatMessage({
+              id: ETranslations.address_book_add_address_chain,
+            })}
             name="networkId"
             rules={{ required: true }}
           >
-            <ChainSelectorInput />
+            <ChainSelectorInput networkIds={addressBookEnabledNetworkIds} />
           </Form.Field>
           <Form.Field
-            label="Name"
+            label={intl.formatMessage({
+              id: ETranslations.address_book_add_address_name,
+            })}
             name="name"
             rules={{
               required: {
                 value: true,
-                message: 'Name cannot be empty.',
+                message: intl.formatMessage({
+                  id: ETranslations.address_book_add_address_name_empty_error,
+                }),
               },
               maxLength: {
                 value: 24,
-                message: 'The maximum length is 24 characters.',
+                message: intl.formatMessage(
+                  {
+                    id: ETranslations.address_book_add_address_name_length_erro,
+                  },
+                  { 'num': 24 },
+                ),
               },
               validate: async (text) => {
                 const searched =
@@ -110,15 +135,24 @@ export const CreateOrEditContent: FC<ICreateOrEditContentProps> = ({
                 if (!searched || item.id === searched.id) {
                   return undefined;
                 }
-                return 'The name already exists.';
+                return intl.formatMessage({
+                  id: ETranslations.address_book_add_address_name_exists,
+                });
               },
             }}
             testID="address-form-name-field"
           >
-            <Input placeholder="Required" testID="address-form-name" />
+            <Input
+              placeholder={intl.formatMessage({
+                id: ETranslations.address_book_add_address_name_required,
+              })}
+              testID="address-form-name"
+            />
           </Form.Field>
           <Form.Field
-            label="Address"
+            label={intl.formatMessage({
+              id: ETranslations.address_book_add_address_address,
+            })}
             name="address"
             rules={{
               validate: async (output: IAddressInputValue) => {
@@ -126,7 +160,12 @@ export const CreateOrEditContent: FC<ICreateOrEditContentProps> = ({
                   return;
                 }
                 if (!output.resolved) {
-                  return output.validateError?.message ?? 'Invalid address';
+                  return (
+                    output.validateError?.message ??
+                    intl.formatMessage({
+                      id: ETranslations.address_book_add_address_address_invalid_error,
+                    })
+                  );
                 }
                 const searched =
                   await backgroundApiProxy.serviceAddressBook.findItem({
@@ -135,7 +174,9 @@ export const CreateOrEditContent: FC<ICreateOrEditContentProps> = ({
                 if (!searched || item.id === searched.id) {
                   return undefined;
                 }
-                return 'The address already exists.';
+                return intl.formatMessage({
+                  id: ETranslations.address_book_add_address_address_exists,
+                });
               },
             }}
             description={
@@ -143,7 +184,9 @@ export const CreateOrEditContent: FC<ICreateOrEditContentProps> = ({
                 <XStack alignItems="center" mt="$1">
                   <Icon size="$4" name="CheckRadioSolid" />
                   <SizableText size="$bodyMd" ml="$1">
-                    Also add to additional EVM-compatible Chains
+                    {intl.formatMessage({
+                      id: ETranslations.address_book_add_address_add_to_evm_chains,
+                    })}
                   </SizableText>
                 </XStack>
               ) : null
@@ -152,16 +195,21 @@ export const CreateOrEditContent: FC<ICreateOrEditContentProps> = ({
           >
             <AddressInput
               networkId={networkId}
-              placeholder="Address"
+              placeholder={intl.formatMessage({
+                id: ETranslations.address_book_add_address_address,
+              })}
               autoError={false}
               testID="address-form-address"
               enableNameResolve
+              enableAddressContract
             />
           </Form.Field>
         </Form>
       </Page.Body>
       <Page.Footer
-        onConfirmText={intl.formatMessage({ id: 'action__save' })}
+        onConfirmText={intl.formatMessage({
+          id: ETranslations.address_book_add_address_button_save,
+        })}
         confirmButtonProps={{
           variant: 'primary',
           loading: form.formState.isSubmitting,

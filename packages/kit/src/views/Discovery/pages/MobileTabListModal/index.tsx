@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { useIntl } from 'react-intl';
 import { StyleSheet } from 'react-native';
 
-import type { IListViewRef } from '@onekeyhq/components';
 import {
   ActionList,
   BlurView,
@@ -13,15 +12,17 @@ import {
   Page,
   Stack,
   Toast,
-  useSafelyScrollIntoIndex,
+  useClipboard,
 } from '@onekeyhq/components';
+import type { IActionListItemProps } from '@onekeyhq/components';
 import type { IPageNavigationProp } from '@onekeyhq/components/src/layouts/Navigation';
+import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
 import {
   useBrowserBookmarkAction,
   useBrowserTabActions,
 } from '@onekeyhq/kit/src/states/jotai/contexts/discovery';
-import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type { IDiscoveryModalParamList } from '@onekeyhq/shared/src/routes';
 import {
   EDiscoveryModalRoutes,
@@ -40,41 +41,9 @@ import {
 import { withBrowserProvider } from '../Browser/WithBrowserProvider';
 
 import type { IWebTab } from '../../types';
-import type { LayoutChangeEvent, View } from 'react-native';
+import type { View } from 'react-native';
 
 export const tabGridRefs: Record<string, View> = {};
-
-const useFixAndroidListViewWidth = platformEnv.isNativeAndroid
-  ? (webTabs: IWebTab[]) => {
-      const [listViewWidth, setListViewWidth] = useState<number | undefined>(
-        undefined,
-      );
-      const handleLayout = useCallback((e: LayoutChangeEvent) => {
-        if (!platformEnv.isNativeAndroid) {
-          return;
-        }
-        const { width } = e.nativeEvent.layout;
-        if (width) {
-          setListViewWidth(width);
-        }
-      }, []);
-
-      // estimatedItemSize="$28"
-      const width = webTabs.length * 112 + 15;
-      return useMemo(
-        () => ({
-          onLayout: handleLayout,
-          listViewWidth: listViewWidth
-            ? Math.min(width, listViewWidth || 0)
-            : undefined,
-        }),
-        [handleLayout, listViewWidth, width],
-      );
-    }
-  : () => ({
-      onLayout: undefined,
-      listViewWidth: undefined,
-    });
 
 function TabToolBar({
   closeAllDisabled,
@@ -104,7 +73,7 @@ function TabToolBar({
           disabled={closeAllDisabled}
           testID="tab-list-modal-close-all"
         >
-          {intl.formatMessage({ id: 'action__close_all_tabs' })}
+          {intl.formatMessage({ id: ETranslations.explore_close_all })}
         </Button>
       </Stack>
       <Stack flex={1} alignItems="center" justifyContent="center">
@@ -123,7 +92,7 @@ function TabToolBar({
           onPress={onDone}
           testID="tab-list-modal-done"
         >
-          {intl.formatMessage({ id: 'action__done' })}
+          {intl.formatMessage({ id: ETranslations.global_done })}
         </Button>
       </Stack>
     </Stack>
@@ -165,46 +134,17 @@ function MobileTabListModal() {
     triggerCloseTab.current = false;
   }, [tabs, setDisplayHomePage, navigation]);
 
-  // tabListView scrollIntoIndex
-  const tabListViewRef = useRef<IListViewRef<IWebTab> | null>(null);
-  const {
-    scrollIntoIndex: scrollTabListIntoIndex,
-    onLayout: onListViewLayout,
-  } = useSafelyScrollIntoIndex(tabListViewRef);
+  const tabInitialScrollIndex = useMemo(
+    () => data.findIndex((t) => t.id === activeTabId),
+    [data, activeTabId],
+  );
+  const pinInitialScrollIndex = useMemo(
+    () => pinnedData.findIndex((t) => t.id === activeTabId),
+    [pinnedData, activeTabId],
+  );
 
-  // pinnedListView scrollIntoIndex
-  const pinnedListRef = useRef<IListViewRef<IWebTab> | null>(null);
-  const {
-    scrollIntoIndex: scrollPinnedListIntoIndex,
-    onLayout: onPinnedListLayout,
-  } = useSafelyScrollIntoIndex(pinnedListRef);
-
-  useEffect(() => {
-    const tabIndex = data.findIndex((t) => t.id === activeTabId);
-    if (tabIndex > -1) {
-      scrollTabListIntoIndex({
-        index: tabIndex,
-        animated: false,
-      });
-      return;
-    }
-
-    const pinnedItemIndex = pinnedData.findIndex((t) => t.id === activeTabId);
-    if (pinnedItemIndex > -1) {
-      scrollPinnedListIntoIndex({
-        index: pinnedItemIndex,
-        animated: false,
-      });
-    }
-  }, [
-    activeTabId,
-    data,
-    pinnedData,
-    scrollPinnedListIntoIndex,
-    scrollTabListIntoIndex,
-  ]);
-
-  const { handleShareUrl } = useBrowserOptionsAction();
+  const { handleShareUrl, handleRenameTab } = useBrowserOptionsAction();
+  const { copyText } = useClipboard();
 
   const handleBookmarkPress = useCallback(
     (bookmark: boolean, url: string, title: string) => {
@@ -215,8 +155,12 @@ function MobileTabListModal() {
       }
       Toast.success({
         title: bookmark
-          ? intl.formatMessage({ id: 'msg__bookmark_added' })
-          : intl.formatMessage({ id: 'msg__bookmark_removed' }),
+          ? intl.formatMessage({
+              id: ETranslations.explore_toast_bookmark_added,
+            })
+          : intl.formatMessage({
+              id: ETranslations.explore_toast_bookmark_removed,
+            }),
       });
     },
     [addBrowserBookmark, removeBrowserBookmark, intl],
@@ -227,13 +171,22 @@ function MobileTabListModal() {
     },
     [handleShareUrl],
   );
+  const handleDisconnect = useCallback(async (url: string) => {
+    const origin = url ? new URL(url).origin : null;
+    if (!origin) return;
+    await backgroundApiProxy.serviceDApp.disconnectWebsite({
+      origin,
+      storageType: 'injectedProvider',
+      entry: 'Browser',
+    });
+  }, []);
   const handlePinnedPress = useCallback(
     (id: string, pinned: boolean) => {
       void setPinnedTab({ id, pinned });
       Toast.success({
         title: pinned
-          ? intl.formatMessage({ id: 'msg__pinned' })
-          : intl.formatMessage({ id: 'msg__unpinned' }),
+          ? intl.formatMessage({ id: ETranslations.explore_toast_pinned })
+          : intl.formatMessage({ id: ETranslations.explore_toast_unpinned }),
       });
     },
     [setPinnedTab, intl],
@@ -241,7 +194,7 @@ function MobileTabListModal() {
   const handleCloseTab = useCallback(
     (id: string) => {
       triggerCloseTab.current = true;
-      void closeWebTab(id);
+      void closeWebTab({ tabId: id, entry: 'Menu' });
     },
     [closeWebTab],
   );
@@ -250,8 +203,8 @@ function MobileTabListModal() {
     if (disabledAddedNewTab) {
       Toast.message({
         title: intl.formatMessage(
-          { id: 'msg__tab_has_reached_the_maximum_limit_of_str' },
-          { 0: '20' },
+          { id: ETranslations.explore_toast_tab_limit_reached },
+          { number: '20' },
         ),
       });
       return;
@@ -266,17 +219,26 @@ function MobileTabListModal() {
   }, [disabledAddedNewTab, navigation, intl]);
 
   const showTabOptions = useCallback(
-    (tab: IWebTab, id: string) => {
+    async (tab: IWebTab, id: string) => {
+      const origin = tab?.url ? new URL(tab.url).origin : null;
+      let hasConnectedAccount = false;
+      if (origin) {
+        const connectedAccounts =
+          await backgroundApiProxy.serviceDApp.findInjectedAccountByOrigin(
+            origin,
+          );
+        hasConnectedAccount = (connectedAccounts ?? []).length > 0;
+      }
       ActionList.show({
-        title: 'Options',
+        title: intl.formatMessage({ id: ETranslations.explore_options }),
         sections: [
           {
             items: [
               {
                 label: intl.formatMessage({
                   id: tab.isBookmark
-                    ? 'actionn__remove_bookmark'
-                    : 'actionn__bookmark',
+                    ? ETranslations.explore_remove_bookmark
+                    : ETranslations.explore_add_bookmark,
                 }),
                 icon: tab.isBookmark ? 'StarSolid' : 'StarOutline',
                 onPress: () =>
@@ -291,40 +253,82 @@ function MobileTabListModal() {
               },
               {
                 label: intl.formatMessage({
-                  id: tab.isPinned ? 'action__unpin' : 'action__pin',
+                  id: tab.isPinned
+                    ? ETranslations.explore_unpin
+                    : ETranslations.explore_pin,
                 }),
                 icon: tab.isPinned ? 'ThumbtackSolid' : 'ThumbtackOutline',
                 onPress: () => handlePinnedPress(id, !tab.isPinned),
                 testID: `action-list-item-${!tab.isPinned ? 'pin' : 'un-pin'}`,
               },
               {
-                label: intl.formatMessage({ id: 'action__share' }),
-                icon: 'ShareOutline',
-                onPress: () => handleShare(tab.url),
-                testID: 'action-list-item-share',
+                label: intl.formatMessage({
+                  id: ETranslations.explore_rename,
+                }),
+                icon: 'PencilOutline',
+                onPress: () => {
+                  void handleRenameTab(tab);
+                },
+                testID: `action-list-item-rename`,
               },
-            ],
+            ].filter(Boolean) as IActionListItemProps[],
           },
           {
             items: [
               {
                 label: intl.formatMessage({
-                  id: tab.isPinned
-                    ? 'action__close_pin_tab'
-                    : 'form__close_tab',
+                  id: ETranslations.global_copy_url,
+                }),
+                icon: 'LinkOutline',
+                onPress: () => {
+                  // onCopyUrl();
+                  copyText(tab.url);
+                },
+                testID: `action-list-item-copy`,
+              },
+              {
+                label: intl.formatMessage({ id: ETranslations.explore_share }),
+                icon: 'ShareOutline',
+                onPress: () => handleShare(tab.url),
+                testID: 'action-list-item-share',
+              },
+            ].filter(Boolean) as IActionListItemProps[],
+          },
+          {
+            items: [
+              hasConnectedAccount && {
+                label: intl.formatMessage({
+                  id: ETranslations.explore_disconnect,
+                }),
+                icon: 'BrokenLinkOutline',
+                onPress: () => {
+                  void handleDisconnect(tab.url);
+                },
+                testID: `action-list-item-disconnect`,
+              },
+              {
+                label: intl.formatMessage({
+                  id: ETranslations.explore_close_tab,
                 }),
                 icon: 'CrossedLargeOutline',
                 onPress: () => handleCloseTab(id),
-                testID: `action-list-item-close-${
-                  tab.isPinned ? 'close-pin-tab' : 'close-tab'
-                }`,
+                testID: `action-list-item-close-close-tab`,
               },
-            ],
+            ].filter(Boolean) as IActionListItemProps[],
           },
         ],
       });
     },
-    [handleBookmarkPress, handlePinnedPress, handleShare, handleCloseTab, intl],
+    [
+      handleBookmarkPress,
+      handlePinnedPress,
+      handleShare,
+      handleRenameTab,
+      handleDisconnect,
+      handleCloseTab,
+      copyText,
+      intl,
+    ],
   );
 
   const keyExtractor = useCallback((item: IWebTab) => item.id, []);
@@ -339,7 +343,7 @@ function MobileTabListModal() {
         }}
         onCloseItem={handleCloseTab}
         onLongPress={(id) => {
-          showTabOptions(tab, id);
+          void showTabOptions(tab, id);
         }}
       />
     ),
@@ -357,14 +361,13 @@ function MobileTabListModal() {
         }}
         onCloseItem={handleCloseTab}
         onLongPress={(id) => {
-          showTabOptions(tab, id);
+          void showTabOptions(tab, id);
         }}
       />
     ),
     [navigation, setCurrentWebTab, activeTabId, handleCloseTab, showTabOptions],
   );
 
-  const { onLayout, listViewWidth } = useFixAndroidListViewWidth(pinnedData);
   const renderPinnedList = useMemo(() => {
     if (pinnedData.length === 0) {
       return null;
@@ -377,44 +380,39 @@ function MobileTabListModal() {
         right="$2.5"
         borderRadius="$5"
         bg="$bgStrong"
-        onLayout={onLayout}
+        testID="tab-pined-container"
+        // To improve performance on Android, turn off the blur effect.
+        experimentalBlurMethod="none"
       >
         <ListView
-          width={listViewWidth}
           contentContainerStyle={{
             p: '$1',
           }}
-          ref={pinnedListRef}
-          onLayout={onPinnedListLayout}
           horizontal
           data={pinnedData}
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item.id}
           estimatedItemSize="$28"
+          // @ts-expect-error
+          estimatedListSize={{ width: 370, height: 52 }}
           renderItem={renderPinnedItem}
+          initialScrollIndex={pinInitialScrollIndex}
         />
       </BlurView>
     );
-  }, [
-    listViewWidth,
-    onLayout,
-    onPinnedListLayout,
-    pinnedData,
-    renderPinnedItem,
-  ]);
+  }, [pinnedData, renderPinnedItem, pinInitialScrollIndex]);
 
   return (
     <Page>
       <Page.Header
         title={intl.formatMessage(
-          { id: 'title__str_tabs' },
-          { 0: `${tabs.length ?? 0}` },
+          { id: ETranslations.explore_tabs_count },
+          { number: `${tabs.length ?? 0}` },
         )}
       />
       <Page.Body>
         <ListView
-          ref={tabListViewRef}
-          onLayout={onListViewLayout}
+          initialScrollIndex={tabInitialScrollIndex}
           // estimated item min size
           estimatedItemSize={223}
           data={data}
@@ -427,6 +425,7 @@ function MobileTabListModal() {
             paddingHorizontal: 10,
             paddingBottom: 62,
           }}
+          testID="tab-container"
         />
         {renderPinnedList}
       </Page.Body>

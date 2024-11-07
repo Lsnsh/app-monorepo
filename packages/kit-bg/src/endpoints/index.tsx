@@ -1,17 +1,32 @@
 import { filter, forEach } from 'lodash';
 
-import type { IEndpointDomainWhiteList } from '@onekeyhq/shared/types/endpoint';
+import { getEndpointsMapByDevSettings } from '@onekeyhq/shared/src/config/endpointsMap';
+import { OneKeyError } from '@onekeyhq/shared/src/errors';
+import errorUtils from '@onekeyhq/shared/src/errors/utils/errorUtils';
+import type {
+  EServiceEndpointEnum,
+  IEndpointDomainWhiteList,
+  IEndpointInfo,
+} from '@onekeyhq/shared/types/endpoint';
 
 import { devSettingsPersistAtom } from '../states/jotai/atoms';
 
-import { endpointsMap } from './endpointsMap';
-
 export async function getEndpoints() {
   const settings = await devSettingsPersistAtom.get();
-  if (settings.enabled && settings.settings?.enableTestEndpoint) {
-    return endpointsMap.test;
+  return getEndpointsMapByDevSettings(settings);
+}
+
+export async function getEndpointInfo({
+  name,
+}: {
+  name: EServiceEndpointEnum;
+}): Promise<IEndpointInfo> {
+  const endpoints = await getEndpoints();
+  const endpoint = endpoints[name];
+  if (!endpoint) {
+    throw new OneKeyError(`Invalid endpoint name:${name}`);
   }
-  return endpointsMap.prod;
+  return { endpoint, name };
 }
 
 export async function getEndpointDomainWhitelist() {
@@ -19,16 +34,23 @@ export async function getEndpointDomainWhitelist() {
   const endpoints = await getEndpoints();
   forEach(endpoints, (endpoint) => {
     try {
-      const url = new URL(endpoint);
-      whitelist.push(url.host);
+      if (endpoint) {
+        const url = new URL(endpoint);
+        whitelist.push(url.host);
+      }
     } catch (e) {
-      // pass
+      errorUtils.autoPrintErrorIgnore(e);
     }
   });
   return filter(whitelist, Boolean);
 }
 
 export async function checkIsOneKeyDomain(url: string) {
-  const whitelist = await getEndpointDomainWhitelist();
-  return whitelist.includes(new URL(url).host);
+  try {
+    const whitelist = await getEndpointDomainWhitelist();
+    return whitelist.includes(new URL(url).host);
+  } catch (e) {
+    errorUtils.autoPrintErrorIgnore(e);
+    return false;
+  }
 }

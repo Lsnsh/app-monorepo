@@ -38,6 +38,9 @@ const COINTYPE_TRON = '195';
 const IMPL_APTOS = 'aptos';
 const COINTYPE_APTOS = '637';
 
+const IMPL_TON = 'ton';
+const COINTYPE_TON = '607';
+
 const IMPL_DOGE = 'doge';
 const COINTYPE_DOGE = '3';
 export const COINNAME_DOGE = 'DOGE';
@@ -45,6 +48,10 @@ export const COINNAME_DOGE = 'DOGE';
 const IMPL_LTC = 'ltc';
 const COINTYPE_LTC = '2';
 export const COINNAME_LTC = 'LTC';
+
+const IMPL_NEURAI = 'neurai';
+const COINTYPE_NEURAI = '1900';
+export const COINNAME_NEURAI = 'NEURAI';
 
 const IMPL_BCH = 'bch';
 const COINTYPE_BCH = '145';
@@ -86,7 +93,22 @@ const COINTYPE_LIGHTNING = '81297820149147';
 const IMPL_LIGHTNING_TESTNET = 'tlightning';
 const COINTYPE_LIGHTNING_TESTNET = '81297820149140';
 
-const IMPL_ALLNETWORKS = 'all';
+const IMPL_NOSTR = 'nostr';
+const COINTYPE_NOSTR = '1237';
+
+const IMPL_DNX = 'dynex';
+const COINTYPE_DNX = '29538';
+
+const IMPL_CKB = 'nervos';
+const COINTYPE_CKB = '309';
+
+const IMPL_SCDO = 'scdo';
+const COINTYPE_SCDO = '541';
+
+const IMPL_ALPH = 'alph';
+const COINTYPE_ALPH = '1234';
+
+const IMPL_ALLNETWORKS = 'onekeyall';
 const COINTYPE_ALLNETWORKS = '0000';
 
 const SUPPORTED_IMPLS = new Set([
@@ -114,6 +136,11 @@ const SUPPORTED_IMPLS = new Set([
   IMPL_NEXA,
   IMPL_LIGHTNING,
   IMPL_LIGHTNING_TESTNET,
+  IMPL_NOSTR,
+  IMPL_NEURAI,
+  IMPL_DNX,
+  IMPL_CKB,
+  IMPL_ALPH,
   IMPL_ALLNETWORKS,
 ]);
 
@@ -141,7 +168,12 @@ const PRODUCTION_IMPLS = new Set([
   IMPL_KASPA,
   IMPL_LIGHTNING,
   IMPL_LIGHTNING_TESTNET,
+  IMPL_NOSTR,
   IMPL_NEXA,
+  IMPL_NEURAI,
+  IMPL_DNX,
+  IMPL_CKB,
+  IMPL_ALPH,
   IMPL_ALLNETWORKS,
 ]);
 
@@ -154,7 +186,7 @@ export const HISTORY_CONSTS = {
   PENDING_QUEUE_MAX_LENGTH: 10,
 };
 
-export enum SocketEvents {
+export enum EAppSocketEvents {
   'Notification' = 'notification',
 }
 
@@ -165,13 +197,16 @@ export const getEnabledAccountDynamicNetworkIds = (): string[] => [
   getNetworkIdsMap().optimism,
 ];
 
+// TODO move to networkUtils
 export const getEnabledNFTNetworkIds = (): string[] => [
+  getNetworkIdsMap().onekeyall,
   getNetworkIdsMap().eth,
   getNetworkIdsMap().optimism,
   getNetworkIdsMap().bsc,
   getNetworkIdsMap().polygon,
   getNetworkIdsMap().arbitrum,
   getNetworkIdsMap().avalanche,
+  getNetworkIdsMap().sol,
 ];
 
 function getSupportedImpls() {
@@ -204,10 +239,17 @@ export {
   COINTYPE_SOL,
   COINTYPE_STC,
   COINTYPE_SUI,
+  COINTYPE_TON,
   COINTYPE_TBTC,
   COINTYPE_TRON,
   COINTYPE_XMR,
+  COINTYPE_NOSTR,
   COINTYPE_XRP,
+  COINTYPE_NEURAI,
+  COINTYPE_DNX,
+  COINTYPE_CKB,
+  COINTYPE_SCDO,
+  COINTYPE_ALPH,
   IMPL_ADA,
   IMPL_ALGO,
   IMPL_ALLNETWORKS,
@@ -229,10 +271,17 @@ export {
   IMPL_SOL,
   IMPL_STC,
   IMPL_SUI,
+  IMPL_TON,
   IMPL_TBTC,
   IMPL_TRON,
   IMPL_XMR,
+  IMPL_NOSTR,
   IMPL_XRP,
+  IMPL_NEURAI,
+  IMPL_DNX,
+  IMPL_CKB,
+  IMPL_SCDO,
+  IMPL_ALPH,
   INDEX_PLACEHOLDER,
   SEPERATOR,
   getSupportedImpls,

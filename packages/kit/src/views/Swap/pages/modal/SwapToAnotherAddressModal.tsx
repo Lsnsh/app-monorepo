@@ -1,16 +1,25 @@
-import { memo, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { useRoute } from '@react-navigation/core';
 import { useIntl } from 'react-intl';
 
 import type { IPageNavigationProp } from '@onekeyhq/components';
-import { Button, Form, Page, useForm } from '@onekeyhq/components';
+import {
+  Form,
+  Icon,
+  Page,
+  SizableText,
+  Stack,
+  XStack,
+  useForm,
+} from '@onekeyhq/components';
 import { AccountSelectorProviderMirror } from '@onekeyhq/kit/src/components/AccountSelector';
 import type { IAddressInputValue } from '@onekeyhq/kit/src/components/AddressInput';
 import { AddressInput } from '@onekeyhq/kit/src/components/AddressInput';
 import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
 import { useSwapToAnotherAccountAddressAtom } from '@onekeyhq/kit/src/states/jotai/contexts/swap';
-import { useSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import { useSettingsAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type {
   EModalSwapRoutes,
   IModalSwapParamList,
@@ -19,7 +28,7 @@ import { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
 import { ESwapDirectionType } from '@onekeyhq/shared/types/swap/types';
 
 import { useSwapAddressInfo } from '../../hooks/useSwapAccount';
-import { withSwapProvider } from '../WithSwapProvider';
+import { SwapProviderMirror } from '../SwapProviderMirror';
 
 import type { RouteProp } from '@react-navigation/core';
 import type { SubmitHandler } from 'react-hook-form';
@@ -37,11 +46,11 @@ const SwapToAnotherAddressPage = () => {
       RouteProp<IModalSwapParamList, EModalSwapRoutes.SwapToAnotherAddress>
     >();
   const paramAddress = route.params?.address;
-  const { accountInfo, networkId, address } = useSwapAddressInfo(
+  const { accountInfo, address, activeAccount } = useSwapAddressInfo(
     ESwapDirectionType.TO,
   );
 
-  const [, setSettings] = useSettingsPersistAtom();
+  const [, setSettings] = useSettingsAtom();
   const [, setSwapToAddress] = useSwapToAnotherAccountAddressAtom();
   const intl = useIntl();
   const form = useForm({
@@ -53,12 +62,13 @@ const SwapToAnotherAddressPage = () => {
     mode: 'onChange',
     reValidateMode: 'onBlur',
   });
-
   useEffect(() => {
-    if (address && address !== paramAddress) {
+    if (address && accountInfo?.account?.address === address) {
       form.setValue('address', { raw: address });
+    } else if (paramAddress) {
+      form.setValue('address', { raw: paramAddress });
     }
-  }, [address, form, paramAddress]);
+  }, [accountInfo?.account?.address, address, form, paramAddress]);
 
   const handleOnOpenAccountSelector = useCallback(() => {
     setSettings((v) => ({
@@ -78,12 +88,12 @@ const SwapToAnotherAddressPage = () => {
       setSwapToAddress((v) => ({
         ...v,
         address: finallyAddress,
-        networkId,
-        accountInfo,
+        networkId: activeAccount?.network?.id,
+        accountInfo: activeAccount,
       }));
       navigation.pop();
     },
-    [accountInfo, navigation, networkId, setSettings, setSwapToAddress],
+    [activeAccount, navigation, setSettings, setSwapToAddress],
   );
 
   const handleOnCancel = useCallback(() => {
@@ -91,14 +101,23 @@ const SwapToAnotherAddressPage = () => {
       ...v,
       swapToAnotherAccountSwitchOn: false,
     }));
-  }, [setSettings]);
+    setSwapToAddress((v) => ({ ...v, address: undefined }));
+  }, [setSwapToAddress, setSettings]);
+
+  const accountSelector = useMemo(
+    () => ({
+      num: 1,
+      onBeforeAccountSelectorOpen: handleOnOpenAccountSelector,
+    }),
+    [handleOnOpenAccountSelector],
+  );
 
   return accountInfo && accountInfo?.network?.id ? (
-    <Page>
-      <Page.Body px="$5" space="$4">
+    <Page scrollEnabled>
+      <Page.Body px="$5" gap="$6">
         <Form form={form}>
           <Form.Field
-            label="Enter a address"
+            label={intl.formatMessage({ id: ETranslations.global_recipient })}
             name="address"
             rules={{
               required: true,
@@ -110,7 +129,7 @@ const SwapToAnotherAddressPage = () => {
                   return (
                     value.validateError?.message ??
                     intl.formatMessage({
-                      id: 'form__address_invalid',
+                      id: ETranslations.send_address_invalid,
                     })
                   );
                 }
@@ -121,38 +140,86 @@ const SwapToAnotherAddressPage = () => {
               networkId={accountInfo?.network?.id}
               enableAddressBook
               enableWalletName
+              accountId={accountInfo?.account?.id}
               contacts
-              accountSelector={{
-                num: 1,
-                onBeforeAccountSelectorOpen: handleOnOpenAccountSelector,
-              }}
+              accountSelector={accountSelector}
             />
           </Form.Field>
         </Form>
+        <Stack gap="$4">
+          <XStack>
+            <Stack
+              $md={{
+                pt: '$0.5',
+              }}
+            >
+              <Icon name="CheckRadioOutline" size="$5" color="$iconSuccess" />
+            </Stack>
+            <SizableText
+              flex={1}
+              pl="$2"
+              size="$bodyLg"
+              color="$textSubdued"
+              $gtMd={{
+                size: '$bodyMd',
+              }}
+            >
+              {intl.formatMessage({
+                id: ETranslations.swap_page_recipient_modal_verify,
+              })}
+            </SizableText>
+          </XStack>
+          <XStack>
+            <Stack
+              $md={{
+                pt: '$0.5',
+              }}
+            >
+              <Icon name="BlockOutline" size="$5" color="$iconCritical" />
+            </Stack>
+            <SizableText
+              flex={1}
+              pl="$2"
+              size="$bodyLg"
+              color="$textSubdued"
+              $gtMd={{
+                size: '$bodyMd',
+              }}
+            >
+              {intl.formatMessage({
+                id: ETranslations.swap_page_recipient_modal_do_not,
+              })}
+            </SizableText>
+          </XStack>
+        </Stack>
       </Page.Body>
       <Page.Footer
         onConfirm={() => form.handleSubmit(handleOnConfirm)()}
         onConfirmText={intl.formatMessage({
-          id: 'action__confirm',
+          id: ETranslations.global_confirm,
         })}
-        onCancelText={intl.formatMessage({ id: 'action__reset' })}
+        onCancelText={intl.formatMessage({
+          id: ETranslations.swap_account_to_address_edit_button,
+        })}
         onCancel={handleOnCancel}
       />
     </Page>
-  ) : (
-    <Button
-      onPress={() => {
-        navigation.pop();
-      }}
-    >
-      no account info please go back
-    </Button>
+  ) : null;
+};
+
+const SwapToAnotherAddressPageWithProvider = () => {
+  const route =
+    useRoute<
+      RouteProp<IModalSwapParamList, EModalSwapRoutes.SwapToAnotherAddress>
+    >();
+  const { storeName } = route.params;
+  return (
+    <SwapProviderMirror storeName={storeName}>
+      <SwapToAnotherAddressPage />
+    </SwapProviderMirror>
   );
 };
 
-const SwapToAnotherAddressPageWithProvider = memo(
-  withSwapProvider(SwapToAnotherAddressPage),
-);
 export default function SwapToAnotherAddressPageModal() {
   return (
     <AccountSelectorProviderMirror

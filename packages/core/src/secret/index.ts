@@ -1,8 +1,14 @@
+import { DEFAULT_VERIFY_STRING } from '@onekeyhq/shared/src/consts/dbConsts';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import bufferUtils from '@onekeyhq/shared/src/utils/bufferUtils';
 
 import { BaseBip32KeyDeriver, ED25519Bip32KeyDeriver } from './bip32';
-import { mnemonicToRevealableSeed, revealEntropyToMnemonic } from './bip39';
+import {
+  mnemonicToRevealableSeed,
+  mnemonicToSeedSync,
+  revealEntropyToMnemonic,
+} from './bip39';
 import { ed25519, nistp256, secp256k1 } from './curves';
 import {
   decrypt,
@@ -12,8 +18,16 @@ import {
 } from './encryptors/aes256';
 import { hash160 } from './hash';
 import ecc from './nobleSecp256k1Wrapper';
+import {
+  tonMnemonicToRevealableSeed,
+  tonRevealEntropyToMnemonic,
+} from './ton-mnemonic';
 
-import type { IBip32ExtendedKey, IBip32KeyDeriver } from './bip32';
+import type {
+  IBip32ExtendedKey,
+  IBip32ExtendedKeySerialized,
+  IBip32KeyDeriver,
+} from './bip32';
 import type {
   IBip39RevealableSeed,
   IBip39RevealableSeedEncryptHex,
@@ -33,7 +47,17 @@ export * from './curves';
 export * from './encryptors/aes256';
 export * from './encryptors/rsa';
 export * from './hash';
+export * from './ton-mnemonic';
 export { ecc };
+
+export enum EMnemonicType {
+  BIP39 = 'bip39',
+  TON = 'ton',
+}
+
+const EncryptPrefixImportedCredential = '|PK|'; // private key
+const EncryptPrefixHdCredential = '|RP|'; // recovery phrase
+const EncryptPrefixVerifyString = '|VS|'; // verify string
 
 const curves: Map<ICurveName, BaseCurve> = new Map([
   ['secp256k1', secp256k1],
@@ -125,6 +149,43 @@ function compressPublicKey(curveName: ICurveName, publicKey: Buffer): Buffer {
   return getCurveByName(curveName).transformPublicKey(publicKey);
 }
 
+function fixV4VerifyStringToV5({ verifyString }: { verifyString: string }) {
+  if (verifyString === DEFAULT_VERIFY_STRING) {
+    return verifyString;
+  }
+
+  return (
+    EncryptPrefixVerifyString +
+    verifyString.replace(EncryptPrefixVerifyString, '')
+  );
+}
+
+function decryptVerifyString({
+  password,
+  verifyString,
+}: {
+  verifyString: string;
+  password: string;
+}) {
+  return decrypt(
+    password,
+    Buffer.from(verifyString.replace(EncryptPrefixVerifyString, ''), 'hex'),
+  ).toString();
+}
+
+function encryptVerifyString({
+  password,
+  addPrefixString = true,
+}: {
+  password: string;
+  addPrefixString?: boolean;
+}) {
+  return (
+    (addPrefixString ? EncryptPrefixVerifyString : '') +
+    encrypt(password, Buffer.from(DEFAULT_VERIFY_STRING)).toString('hex')
+  );
+}
+
 function decryptRevealableSeed({
   rs,
   password,
@@ -132,8 +193,59 @@ function decryptRevealableSeed({
   rs: IBip39RevealableSeedEncryptHex;
   password: string;
 }): IBip39RevealableSeed {
-  const rsJsonStr = bufferUtils.bytesToUtf8(decrypt(password, rs));
+  const rsJsonStr = bufferUtils.bytesToUtf8(
+    decrypt(password, rs.replace(EncryptPrefixHdCredential, '')),
+  );
   return JSON.parse(rsJsonStr) as IBip39RevealableSeed;
+}
+
+function encryptRevealableSeed({
+  rs,
+  password,
+}: {
+  rs: IBip39RevealableSeed;
+  password: string;
+}): IBip39RevealableSeedEncryptHex {
+  return (
+    EncryptPrefixHdCredential +
+    bufferUtils.bytesToHex(
+      encryptString({
+        password,
+        data: JSON.stringify(rs),
+        dataEncoding: 'utf8',
+      }),
+    )
+  );
+}
+
+function decryptImportedCredential({
+  credential,
+  password,
+}: {
+  credential: ICoreImportedCredentialEncryptHex;
+  password: string;
+}): ICoreImportedCredential {
+  const text = bufferUtils.bytesToUtf8(
+    decrypt(password, credential.replace(EncryptPrefixImportedCredential, '')),
+  );
+  return JSON.parse(text) as ICoreImportedCredential;
+}
+
+function encryptImportedCredential({
+  credential,
+  password,
+}: {
+  credential: ICoreImportedCredential;
+  password: string;
+}): ICoreImportedCredentialEncryptHex {
+  return (
+    EncryptPrefixImportedCredential +
+    encryptString({
+      password,
+      data: JSON.stringify(credential),
+      dataEncoding: 'utf8',
+    })
+  );
 }
 
 function batchGetKeys(
@@ -175,8 +287,8 @@ function batchGetKeys(
       return;
     }
     const index = pathComponent.endsWith("'")
-      ? parseInt(pathComponent.slice(0, -1)) + 2 ** 31
-      : parseInt(pathComponent);
+      ? parseInt(pathComponent.slice(0, -1), 10) + 2 ** 31
+      : parseInt(pathComponent, 10);
     key = deriver.CKDPriv(key, index);
   });
 
@@ -195,8 +307,8 @@ function batchGetKeys(
       currentPath = `${currentPath}/${pathComponent}`;
       if (typeof cache[currentPath] === 'undefined') {
         const index = pathComponent.endsWith("'")
-          ? parseInt(pathComponent.slice(0, -1)) + 2 ** 31
-          : parseInt(pathComponent);
+          ? parseInt(pathComponent.slice(0, -1), 10) + 2 ** 31
+          : parseInt(pathComponent, 10);
         const privkey = deriver.CKDPriv(parent.privkey, index);
 
         if (typeof parent.fingerPrint === 'undefined') {
@@ -253,6 +365,11 @@ function batchGetPrivateKeys(
   );
 }
 
+export type ISecretPublicKeyInfoSerialized = {
+  path: string;
+  parentFingerPrint: string;
+  extendedKey: IBip32ExtendedKeySerialized;
+};
 export type ISecretPublicKeyInfo = {
   path: string;
   parentFingerPrint: Buffer;
@@ -272,6 +389,34 @@ function batchGetPublicKeys(
     prefix,
     relPaths,
     'public',
+  );
+}
+export type IBatchGetPublicKeysAsyncParams = {
+  curveName: ICurveName;
+  hdCredential: ICoreHdCredentialEncryptHex;
+  password: string;
+  prefix: string;
+  relPaths: Array<string>;
+};
+async function batchGetPublicKeysAsync(
+  params: IBatchGetPublicKeysAsyncParams,
+): Promise<ISecretPublicKeyInfo[]> {
+  if (platformEnv.isNative) {
+    const keys = await globalThis.$webembedApiProxy.secret.batchGetPublicKeys(
+      params,
+    );
+    return keys.map((key) => ({
+      path: key.path,
+      parentFingerPrint: Buffer.from(key.parentFingerPrint, 'hex'),
+      extendedKey: {
+        key: Buffer.from(key.extendedKey.key, 'hex'),
+        chainCode: Buffer.from(key.extendedKey.chainCode, 'hex'),
+      },
+    }));
+  }
+  const { curveName, hdCredential, password, prefix, relPaths } = params;
+  return Promise.resolve(
+    batchGetPublicKeys(curveName, hdCredential, password, prefix, relPaths),
   );
 }
 
@@ -336,50 +481,6 @@ function CKDPub(
   return getDeriverByCurveName(curveName).CKDPub(parent, index);
 }
 
-function encryptRevealableSeed({
-  rs,
-  password,
-}: {
-  rs: IBip39RevealableSeed;
-  password: string;
-}): IBip39RevealableSeedEncryptHex {
-  return bufferUtils.bytesToHex(
-    encryptString({
-      password,
-      data: JSON.stringify({
-        entropyWithLangPrefixed: rs.entropyWithLangPrefixed,
-        seed: rs.seed,
-      }),
-      dataEncoding: 'utf8',
-    }),
-  );
-}
-
-function decryptImportedCredential({
-  credential,
-  password,
-}: {
-  credential: ICoreImportedCredentialEncryptHex;
-  password: string;
-}): ICoreImportedCredential {
-  const text = bufferUtils.bytesToUtf8(decrypt(password, credential));
-  return JSON.parse(text) as ICoreImportedCredential;
-}
-
-function encryptImportedCredential({
-  credential,
-  password,
-}: {
-  credential: ICoreImportedCredential;
-  password: string;
-}): ICoreImportedCredentialEncryptHex {
-  return encryptString({
-    password,
-    data: JSON.stringify(credential),
-    dataEncoding: 'utf8',
-  });
-}
-
 function revealableSeedFromMnemonic(
   mnemonic: string,
   password: string,
@@ -399,44 +500,130 @@ function mnemonicFromEntropy(
   hdCredential: IBip39RevealableSeedEncryptHex,
   password: string,
 ): string {
-  const rs: IBip39RevealableSeed = JSON.parse(
-    bufferUtils.bytesToUtf8(decrypt(password, hdCredential)),
-  );
-  return revealEntropyToMnemonic(
+  defaultLogger.account.secretPerf.decryptHdCredential();
+  const rs: IBip39RevealableSeed = decryptRevealableSeed({
+    password,
+    rs: hdCredential,
+  });
+  defaultLogger.account.secretPerf.decryptHdCredentialDone();
+
+  defaultLogger.account.secretPerf.revealEntropyToMnemonic();
+  const r = revealEntropyToMnemonic(
     bufferUtils.toBuffer(rs.entropyWithLangPrefixed),
+  );
+  defaultLogger.account.secretPerf.revealEntropyToMnemonicDone();
+
+  return r;
+}
+
+export type IMnemonicFromEntropyAsyncParams = {
+  hdCredential: IBip39RevealableSeedEncryptHex;
+  password: string;
+};
+export function mnemonicFromEntropyAsync(
+  params: IMnemonicFromEntropyAsyncParams,
+): Promise<string> {
+  if (platformEnv.isNative) {
+    return globalThis.$webembedApiProxy.secret.mnemonicFromEntropyAsync(params);
+  }
+  return Promise.resolve(
+    mnemonicFromEntropy(params.hdCredential, params.password),
   );
 }
 
-function generateRootFingerprint(
-  curveName: ICurveName,
-  hdCredential: IBip39RevealableSeedEncryptHex,
-  password: string,
-): Buffer {
+export type IMnemonicToSeedAsyncParams = {
+  mnemonic: string;
+  passphrase?: string;
+};
+export async function mnemonicToSeedAsync(
+  params: IMnemonicToSeedAsyncParams,
+): Promise<Buffer> {
+  if (platformEnv.isNative) {
+    const hex = await globalThis.$webembedApiProxy.secret.mnemonicToSeedAsync(
+      params,
+    );
+    return Buffer.from(hex, 'hex');
+  }
+  return Promise.resolve(
+    mnemonicToSeedSync(params.mnemonic, params.passphrase),
+  );
+}
+
+export type IGenerateRootFingerprintHexAsyncParams = {
+  curveName: ICurveName;
+  hdCredential: IBip39RevealableSeedEncryptHex;
+  password: string;
+};
+export async function generateRootFingerprintHexAsync(
+  params: IGenerateRootFingerprintHexAsyncParams,
+): Promise<string> {
+  if (platformEnv.isNative) {
+    return globalThis.$webembedApiProxy.secret.generateRootFingerprintHexAsync(
+      params,
+    );
+  }
+  const { curveName, hdCredential, password } = params;
   const masterKey = generateMasterKeyFromSeed(
     curveName,
     hdCredential,
     password,
   );
   const publicKey = publicFromPrivate(curveName, masterKey.key, password);
-  return hash160(publicKey).slice(0, 4);
+  return hash160(publicKey).slice(0, 4).toString('hex');
+}
+
+function revealableSeedFromTonMnemonic(
+  mnemonic: string,
+  password: string,
+): IBip39RevealableSeedEncryptHex {
+  const rs: IBip39RevealableSeed = tonMnemonicToRevealableSeed(mnemonic);
+  return encryptRevealableSeed({
+    rs,
+    password,
+  });
+}
+
+function tonMnemonicFromEntropy(
+  hdCredential: IBip39RevealableSeedEncryptHex,
+  password: string,
+): string {
+  defaultLogger.account.secretPerf.decryptHdCredential();
+  const rs: IBip39RevealableSeed = decryptRevealableSeed({
+    password,
+    rs: hdCredential,
+  });
+  defaultLogger.account.secretPerf.decryptHdCredentialDone();
+
+  defaultLogger.account.secretPerf.revealEntropyToMnemonic();
+  const r = tonRevealEntropyToMnemonic(
+    bufferUtils.toBuffer(rs.entropyWithLangPrefixed),
+  );
+  defaultLogger.account.secretPerf.revealEntropyToMnemonicDone();
+
+  return r;
 }
 
 export {
-  CKDPriv,
-  CKDPub,
-  N,
   batchGetPrivateKeys,
   batchGetPublicKeys,
+  batchGetPublicKeysAsync,
+  CKDPriv,
+  CKDPub,
   compressPublicKey,
   decryptImportedCredential,
   decryptRevealableSeed,
+  decryptVerifyString,
   encryptImportedCredential,
   encryptRevealableSeed,
+  encryptVerifyString,
+  fixV4VerifyStringToV5,
   generateMasterKeyFromSeed,
-  generateRootFingerprint,
   mnemonicFromEntropy,
+  N,
   publicFromPrivate,
   revealableSeedFromMnemonic,
+  revealableSeedFromTonMnemonic,
+  tonMnemonicFromEntropy,
   sign,
   uncompressPublicKey,
   verify,

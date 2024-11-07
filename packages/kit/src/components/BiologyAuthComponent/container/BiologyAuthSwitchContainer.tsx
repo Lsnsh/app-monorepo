@@ -1,9 +1,13 @@
 import { useCallback } from 'react';
 
+import { useIntl } from 'react-intl';
+
 import { Toast } from '@onekeyhq/components';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import { useSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
 import { usePasswordBiologyAuthInfoAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms/password';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
 import BiologyAuthSwitch from '../components/BiologyAuthSwitch';
 
@@ -14,6 +18,7 @@ interface IBiologyAuthSwitchContainerProps {
 const BiologyAuthSwitchContainer = ({
   skipAuth,
 }: IBiologyAuthSwitchContainerProps) => {
+  const intl = useIntl();
   const [{ isSupport }] = usePasswordBiologyAuthInfoAtom();
   const [settings] = useSettingsPersistAtom();
   const onChange = useCallback(
@@ -24,10 +29,16 @@ const BiologyAuthSwitchContainer = ({
           skipAuth,
         );
       } catch (e) {
-        Toast.error({ title: 'Set biology auth fail' });
+        Toast.error({
+          title: intl.formatMessage({
+            id: platformEnv.isDesktopWin
+              ? ETranslations.global_windows_hello_set_error
+              : ETranslations.global_touch_id_set_error,
+          }),
+        });
       }
     },
-    [skipAuth],
+    [intl, skipAuth],
   );
   return (
     <BiologyAuthSwitch

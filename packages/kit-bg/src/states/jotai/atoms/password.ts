@@ -1,18 +1,27 @@
-import biologyAuth from '@onekeyhq/shared/src/biologyAuth';
+import type { IDialogShowProps } from '@onekeyhq/components/src/composite/Dialog/type';
 import { ELockDuration } from '@onekeyhq/shared/src/consts/appAutoLockConsts';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import { isSupportWebAuth } from '@onekeyhq/shared/src/webAuth';
+import { EPasswordVerifyStatus } from '@onekeyhq/shared/types/password';
 
+import { biologyAuthUtils } from '../../../services/ServicePassword/biologyAuthUtils';
 import { EAtomNames } from '../atomNames';
 import { globalAtom, globalAtomComputed } from '../utils';
 
 import { settingsPersistAtom } from './settings';
+import { v4migrationAtom } from './v4migration';
 
 import type { EPasswordPromptType } from '../../../services/ServicePassword/types';
 import type { AuthenticationType } from 'expo-local-authentication';
 
 export type IPasswordAtom = {
   unLock: boolean;
+  // Is the application not locked manually by the user
+  manualLocking: boolean;
+  passwordVerifyStatus: {
+    value: EPasswordVerifyStatus;
+    message?: string;
+  };
 };
 export const { target: passwordAtom, use: usePasswordAtom } =
   globalAtom<IPasswordAtom>({
@@ -20,6 +29,8 @@ export const { target: passwordAtom, use: usePasswordAtom } =
     name: EAtomNames.passwordAtom,
     initialValue: {
       unLock: false,
+      manualLocking: false,
+      passwordVerifyStatus: { value: EPasswordVerifyStatus.DEFAULT },
     },
   });
 
@@ -29,6 +40,7 @@ export type IPasswordPromptPromiseTriggerAtom = {
     | {
         idNumber: number;
         type: EPasswordPromptType;
+        dialogProps?: IDialogShowProps;
       }
     | undefined;
 };
@@ -46,22 +58,20 @@ export const {
 export type IPasswordPersistAtom = {
   isPasswordSet: boolean;
   webAuthCredentialId: string;
-  // Is the application not locked manually by the user
-  manualLocking: boolean;
   appLockDuration: number;
   enableSystemIdleLock: boolean;
+};
+export const passwordAtomInitialValue: IPasswordPersistAtom = {
+  isPasswordSet: false,
+  webAuthCredentialId: '',
+  appLockDuration: 240,
+  enableSystemIdleLock: false,
 };
 export const { target: passwordPersistAtom, use: usePasswordPersistAtom } =
   globalAtom<IPasswordPersistAtom>({
     persist: true,
     name: EAtomNames.passwordPersistAtom,
-    initialValue: {
-      isPasswordSet: false,
-      webAuthCredentialId: '',
-      manualLocking: false,
-      appLockDuration: 240,
-      enableSystemIdleLock: false,
-    },
+    initialValue: passwordAtomInitialValue,
   });
 
 export const { target: systemIdleLockSupport, use: useSystemIdleLockSupport } =
@@ -84,6 +94,14 @@ export const {
     isEnable: boolean;
   }>
 >(async (get) => {
+  // TODO: remove webAuth in Native App
+  // handling webAuthCredentialId in suspense causes the parent container to re-render and flicker.
+  if (platformEnv.isNative) {
+    return {
+      isSupport: false,
+      isEnable: false,
+    };
+  }
   const { webAuthCredentialId } = get(passwordPersistAtom.atom());
   const isSupport = await isSupportWebAuth();
   const isEnable = isSupport && webAuthCredentialId?.length > 0;
@@ -100,8 +118,8 @@ export const {
     isEnable: boolean;
   }>
 >(async (get) => {
-  const authType = await biologyAuth.getBiologyAuthType();
-  const isSupport = await biologyAuth.isSupportBiologyAuth();
+  const authType = await biologyAuthUtils.getBiologyAuthType();
+  const isSupport = await biologyAuthUtils.isSupportBiologyAuth();
   const isEnable =
     isSupport && get(settingsPersistAtom.atom()).isBiologyAuthSwitchOn;
   return { authType, isSupport, isEnable };
@@ -109,18 +127,25 @@ export const {
 
 export const { target: appIsLocked, use: useAppIsLockedAtom } =
   globalAtomComputed<boolean>((get) => {
-    const { isPasswordSet, manualLocking, appLockDuration } = get(
-      passwordPersistAtom.atom(),
-    );
-    const { unLock } = get(passwordAtom.atom());
+    const { isMigrationModalOpen, isProcessing } = get(v4migrationAtom.atom());
+    if (isMigrationModalOpen || isProcessing) {
+      return false;
+    }
+    const { isPasswordSet, appLockDuration } = get(passwordPersistAtom.atom());
+    const { manualLocking } = get(passwordAtom.atom());
     if (isPasswordSet) {
       if (manualLocking) {
         return true;
       }
-      if (platformEnv.isWeb || platformEnv.isDev) {
-        return !unLock && String(appLockDuration) !== ELockDuration.Never;
+      const { unLock } = get(passwordAtom.atom());
+      let usedUnlock = unLock;
+      if (isMigrationModalOpen) {
+        usedUnlock = true;
       }
-      return !unLock;
+      if (platformEnv.isWeb || platformEnv.isDev) {
+        return !usedUnlock && String(appLockDuration) !== ELockDuration.Never;
+      }
+      return !usedUnlock;
     }
     return false;
   });

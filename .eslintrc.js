@@ -16,10 +16,11 @@ const jsRules = {
   'react/no-unused-prop-types': 'off',
   'prefer-destructuring': 'off',
   'react/no-unstable-nested-components': 'warn',
+  'react/jsx-key': 'error',
   'react/jsx-no-useless-fragment': 'off',
   'use-effect-no-deps/use-effect-no-deps': 'error',
   'react-hooks/exhaustive-deps': [
-    'warn',
+    'error',
     {
       'additionalHooks': '(usePromiseResult|useAsyncCall)',
     },
@@ -43,8 +44,47 @@ const jsRules = {
     },
   ],
   // 'no-console': [isDev ? 'warn' : 'off'],
+  'radix': 'error',
+  'unicorn/numeric-separators-style': 'error',
+  'unicorn/prefer-global-this': 'error',
 };
+const restrictedImportsPatterns = [
+  {
+    allowTypeImports: true,
+    group: ['@onekeyfe/hd-core'],
+    message: 'using `const {} = await CoreSDKLoader()` instead',
+  },
+  {
+    group: ['**/localDbInstance', '**/localDbInstance.native'],
+    message:
+      'import localDbInstance directly is not allowd, use localDb instead',
+  },
+  {
+    group: ['**/v4localDbInstance.native'],
+    message:
+      'import v4localDbInstance.native directly is not allowd, use v4localDbInstance instead',
+  },
+  {
+    group: [
+      '**/v4ToV5Migration',
+      'v4ToV5Migration/**',
+      '**/v4ToV5Migration/**',
+    ],
+    message: 'import **/v4ToV5Migration/** not allowed ',
+  },
+  {
+    group: ['**/v4localDBStoreNames.native'],
+    message: 'import v4localDBStoreNames instead ',
+  },
+  //
+];
 const tsRules = {
+  '@typescript-eslint/no-restricted-imports': [
+    'error',
+    {
+      patterns: [...restrictedImportsPatterns],
+    },
+  ],
   '@typescript-eslint/default-param-last': 'off',
   '@typescript-eslint/consistent-type-imports': [
     'error',
@@ -128,7 +168,14 @@ const tsRules = {
 const resolveExtensions = (platform) =>
   ['.ts', '.tsx', '.js', '.jsx'].map((ext) => `${platform}${ext}`);
 module.exports = {
-  plugins: ['spellcheck', 'import-path', 'use-effect-no-deps', 'ban'],
+  plugins: [
+    'spellcheck',
+    'import-path',
+    'use-effect-no-deps',
+    'ban',
+    'unicorn',
+    'props-checker',
+  ],
   settings: {
     'import/extensions': [
       ...resolveExtensions('web'),
@@ -150,29 +197,7 @@ module.exports = {
   ignorePatterns: [
     '*.wasm.bin',
     'apps/desktop/public/static/js-sdk*',
-    'packages/components/src/primitives/Icon/*',
-    'packages/kit/src/store',
-    'packages/shared/src/engine',
-    'packages/core/src/chains/ada',
-    'packages/core/src/chains/algo',
-    'packages/core/src/chains/apt',
-    'packages/core/src/chains/bch',
-    'packages/core/src/chains/btc',
-    'packages/core/src/chains/cfx',
-    'packages/core/src/chains/cosmos',
-    'packages/core/src/chains/doge',
-    'packages/core/src/chains/dot',
-    'packages/core/src/chains/fil',
-    'packages/core/src/chains/kaspa',
-    'packages/core/src/chains/ltc',
-    'packages/core/src/chains/near',
-    'packages/core/src/chains/nexa',
-    'packages/core/src/chains/sol',
-    'packages/core/src/chains/stc',
-    'packages/core/src/chains/sui',
-    'packages/core/src/chains/tron',
-    'packages/core/src/chains/xmr',
-    'packages/core/src/chains/xrp',
+    'packages/components/src/primitives/Icon/react/*',
   ],
   env: {
     browser: true,
@@ -209,9 +234,36 @@ module.exports = {
           /Erc20/i,
           /Erc721/i,
           /Erc1155/i,
+          /protobufjs/i,
+          /boc/i,
+          /seqno/i,
+          /jetton/i,
+          /Nano/i,
+          /Bounceable/i,
+          /scdo/i,
+          /faq/i,
+          /atto/i,
+          /alephium/i,
+          /Preauthorized/i,
         ],
         'skipIfMatch': ['http://[^s]*'],
         'minLength': 3,
+      },
+    ],
+    'props-checker/validator': [
+      'error',
+      {
+        props: [
+          {
+            propName: 'onPress',
+            components: [
+              { component: 'Stack', dependOn: 'pressStyle' },
+              { component: 'XStack', dependOn: 'pressStyle' },
+              { component: 'YStack', dependOn: 'pressStyle' },
+            ],
+          },
+          { propName: 'accessible', components: ['TextInput'] },
+        ],
       },
     ],
   },
@@ -242,6 +294,7 @@ module.exports = {
           'error',
           {
             patterns: [
+              ...restrictedImportsPatterns,
               {
                 allowTypeImports: true,
                 group: ['@onekeyhq/kit/*', '@onekeyhq/kit-bg/*'],
@@ -265,6 +318,7 @@ module.exports = {
           'error',
           {
             patterns: [
+              ...restrictedImportsPatterns,
               {
                 allowTypeImports: true,
                 group: [
@@ -288,6 +342,7 @@ module.exports = {
           'error',
           {
             patterns: [
+              ...restrictedImportsPatterns,
               {
                 allowTypeImports: true,
                 group: [
@@ -317,6 +372,7 @@ module.exports = {
           'error',
           {
             patterns: [
+              ...restrictedImportsPatterns,
               {
                 allowTypeImports: true,
                 group: ['tamagui'],

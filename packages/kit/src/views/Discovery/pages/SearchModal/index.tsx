@@ -1,23 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useFocusEffect, useRoute } from '@react-navigation/core';
-import { Keyboard } from 'react-native';
+import { useIntl } from 'react-intl';
+import { Keyboard, StyleSheet } from 'react-native';
 
 import {
+  Icon,
   Image,
   Page,
+  RichSizeableText,
   ScrollView,
   SearchBar,
   SizableText,
   Skeleton,
   Stack,
   XStack,
+  useMedia,
 } from '@onekeyhq/components';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
 import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
 import { usePromiseResult } from '@onekeyhq/kit/src/hooks/usePromiseResult';
 import { useBrowserAction } from '@onekeyhq/kit/src/states/jotai/contexts/discovery';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
+import { EEnterMethod } from '@onekeyhq/shared/src/logger/scopes/discovery/scenes/dapp';
 import type { IDiscoveryModalParamList } from '@onekeyhq/shared/src/routes';
 import {
   EDiscoveryModalRoutes,
@@ -25,6 +32,7 @@ import {
 } from '@onekeyhq/shared/src/routes';
 import type { IDApp } from '@onekeyhq/shared/types/discovery';
 
+import { DiscoveryIcon } from '../../components/DiscoveryIcon';
 import { withBrowserProvider } from '../Browser/WithBrowserProvider';
 
 import { DappSearchModalSectionHeader } from './DappSearchModalSectionHeader';
@@ -33,7 +41,14 @@ import type { RouteProp } from '@react-navigation/core';
 
 const SEARCH_ITEM_ID = 'SEARCH_ITEM_ID';
 
+const LoadingSkeleton = (
+  <Image.Loading>
+    <Skeleton width="100%" height="100%" />
+  </Image.Loading>
+);
+
 function SearchModal() {
+  const intl = useIntl();
   const navigation = useAppNavigation();
   const route =
     useRoute<
@@ -42,6 +57,7 @@ function SearchModal() {
   const { useCurrentWindow, tabId, url = '' } = route.params ?? {};
 
   const [searchValue, setSearchValue] = useState(url);
+  const { gtMd } = useMedia();
   const { handleOpenWebSite } = useBrowserAction().current;
 
   const { serviceDiscovery } = backgroundApiProxy;
@@ -64,9 +80,7 @@ function SearchModal() {
 
   const { result: searchResult } = usePromiseResult(async () => {
     const res = await serviceDiscovery.searchDApp(searchValue);
-    return {
-      remoteData: res,
-    };
+    return res;
   }, [searchValue, serviceDiscovery]);
 
   const jumpPageRef = useRef(false);
@@ -80,6 +94,7 @@ function SearchModal() {
   });
 
   const [searchList, setSearchList] = useState<IDApp[]>([]);
+
   useEffect(() => {
     void (async () => {
       if (!searchValue) {
@@ -93,24 +108,102 @@ function SearchModal() {
       setSearchList([
         {
           dappId: SEARCH_ITEM_ID,
-          // TODO: i18n
-          name: `Search "${searchValue}"`,
+          name: `${intl.formatMessage({
+            id: ETranslations.explore_search_placeholder,
+          })} "${searchValue}"`,
           url: '',
           logo,
         } as IDApp,
-        ...(searchResult?.remoteData ?? []),
+        ...(searchResult ?? []),
       ]);
     })();
-  }, [searchValue, searchResult]);
+  }, [searchValue, searchResult, intl]);
 
   const displaySearchList = Array.isArray(searchList) && searchList.length > 0;
   const displayBookmarkList =
     (localData?.bookmarkData ?? []).length > 0 && !displaySearchList;
   const displayHistoryList = (localData?.historyData ?? []).length > 0;
 
+  const renderList = useCallback(
+    (list: IDApp[]) =>
+      list.map((item, index) => (
+        <ListItem
+          key={index}
+          avatarProps={{
+            src: item.logo || item.originLogo,
+            loading: LoadingSkeleton,
+            fallbackProps: {
+              bg: '$bgStrong',
+              justifyContent: 'center',
+              alignItems: 'center',
+              children: <Icon name="GlobusOutline" />,
+            },
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: '$borderSubdued',
+          }}
+          renderItemText={() => (
+            <RichSizeableText
+              linkList={{ a: { url: undefined, cursor: 'auto' } }}
+              numberOfLines={1}
+              size="$bodyLgMedium"
+              flex={1}
+            >
+              {item?.keyword
+                ? item.name.replace(
+                    new RegExp(item.keyword, 'ig'),
+                    `<a>${item.keyword}</a>`,
+                  )
+                : item.name}
+            </RichSizeableText>
+          )}
+          subtitleProps={{
+            numberOfLines: 1,
+          }}
+          onPress={() => {
+            if (item.dappId === SEARCH_ITEM_ID) {
+              handleOpenWebSite({
+                switchToMultiTabBrowser: gtMd,
+                navigation,
+                useCurrentWindow,
+                tabId,
+                webSite: {
+                  url: searchValue,
+                  title: searchValue,
+                },
+              });
+              defaultLogger.discovery.dapp.enterDapp({
+                dappDomain: searchValue,
+                dappName: searchValue,
+                enterMethod: EEnterMethod.search,
+              });
+            } else {
+              handleOpenWebSite({
+                switchToMultiTabBrowser: gtMd,
+                navigation,
+                useCurrentWindow,
+                tabId,
+                dApp: item,
+              });
+              defaultLogger.discovery.dapp.enterDapp({
+                dappDomain: item.name,
+                dappName: item.url,
+                enterMethod: EEnterMethod.search,
+              });
+            }
+          }}
+          testID={`dapp-search${index}`}
+        />
+      )),
+    [gtMd, handleOpenWebSite, navigation, searchValue, tabId, useCurrentWindow],
+  );
+
   return (
     <Page safeAreaEnabled>
-      <Page.Header headerTitle="Search" />
+      <Page.Header
+        headerTitle={intl.formatMessage({
+          id: ETranslations.explore_search_placeholder,
+        })}
+      />
       <Page.Body>
         <Stack mx="$4">
           <SearchBar
@@ -119,8 +212,12 @@ function SearchModal() {
             selectTextOnFocus
             value={searchValue}
             onSearchTextChange={setSearchValue}
+            placeholder={intl.formatMessage({
+              id: ETranslations.browser_search_dapp_or_enter_url,
+            })}
             onSubmitEditing={() => {
               handleOpenWebSite({
+                switchToMultiTabBrowser: gtMd,
                 navigation,
                 useCurrentWindow,
                 tabId,
@@ -128,6 +225,12 @@ function SearchModal() {
                   url: searchValue,
                   title: searchValue,
                 },
+              });
+
+              defaultLogger.discovery.dapp.enterDapp({
+                dappDomain: searchValue,
+                dappName: searchValue,
+                enterMethod: EEnterMethod.addressBar,
               });
             }}
           />
@@ -139,50 +242,14 @@ function SearchModal() {
           keyboardShouldPersistTaps="handled"
           onScrollBeginDrag={Keyboard.dismiss}
         >
-          {displaySearchList ? (
-            <Stack pb="$5">
-              {searchList.map((item, index) => (
-                <ListItem
-                  key={index}
-                  avatarProps={{
-                    src: item.logo || item.originLogo,
-                    fallbackProps: {
-                      children: <Skeleton w="$10" h="$10" />,
-                    },
-                  }}
-                  title={item.name}
-                  subtitleProps={{
-                    numberOfLines: 1,
-                  }}
-                  onPress={() => {
-                    if (item.dappId === SEARCH_ITEM_ID) {
-                      handleOpenWebSite({
-                        navigation,
-                        useCurrentWindow,
-                        tabId,
-                        webSite: {
-                          url: searchValue,
-                          title: searchValue,
-                        },
-                      });
-                    } else {
-                      handleOpenWebSite({
-                        navigation,
-                        useCurrentWindow,
-                        tabId,
-                        dApp: item,
-                      });
-                    }
-                  }}
-                />
-              ))}
-            </Stack>
-          ) : null}
+          {displaySearchList ? renderList(searchList) : null}
 
           {displayBookmarkList ? (
             <Stack>
               <DappSearchModalSectionHeader
-                title="Bookmarks"
+                title={intl.formatMessage({
+                  id: ETranslations.explore_bookmarks,
+                })}
                 onMorePress={() => {
                   jumpPageRef.current = true;
                   navigation.pushModal(EModalRoutes.DiscoveryModal, {
@@ -202,6 +269,7 @@ function SearchModal() {
                     }}
                     onPress={() => {
                       handleOpenWebSite({
+                        switchToMultiTabBrowser: gtMd,
                         navigation,
                         useCurrentWindow,
                         tabId,
@@ -210,15 +278,19 @@ function SearchModal() {
                           title: item.title,
                         },
                       });
+
+                      defaultLogger.discovery.dapp.enterDapp({
+                        dappDomain: item.url,
+                        dappName: item.title,
+                        enterMethod: EEnterMethod.bookmarkInSearch,
+                      });
                     }}
                   >
-                    <Image w="$14" h="$14" borderRadius="$3">
-                      <Image.Source
-                        source={{
-                          uri: item.logo,
-                        }}
-                      />
-                    </Image>
+                    <DiscoveryIcon
+                      uri={item.logo}
+                      size="$14"
+                      borderRadius="$3"
+                    />
                     <SizableText
                       mt="$2"
                       px="$2"
@@ -239,7 +311,9 @@ function SearchModal() {
           {displayHistoryList ? (
             <Stack pt="$5">
               <DappSearchModalSectionHeader
-                title="History"
+                title={intl.formatMessage({
+                  id: ETranslations.explore_history,
+                })}
                 onMorePress={() => {
                   jumpPageRef.current = true;
                   navigation.pushModal(EModalRoutes.DiscoveryModal, {
@@ -247,20 +321,35 @@ function SearchModal() {
                   });
                 }}
               />
-              {localData?.historyData?.map((item, index) => (
+              {localData?.historyData.map((item, index) => (
                 <ListItem
                   key={index}
                   avatarProps={{
                     src: item.logo,
+                    loading: LoadingSkeleton,
+                    fallbackProps: {
+                      bg: '$bgStrong',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      children: <Icon name="GlobusOutline" />,
+                    },
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: '$borderSubdued',
                   }}
                   title={item.title}
+                  titleMatch={item.titleMatch}
+                  titleProps={{
+                    numberOfLines: 1,
+                  }}
                   subtitle={item.url}
+                  subTitleMatch={item.urlMatch}
                   subtitleProps={{
                     numberOfLines: 1,
                   }}
                   testID={`search-modal-${item.title.toLowerCase()}`}
                   onPress={() => {
                     handleOpenWebSite({
+                      switchToMultiTabBrowser: gtMd,
                       navigation,
                       useCurrentWindow,
                       tabId,
@@ -268,6 +357,12 @@ function SearchModal() {
                         url: item.url,
                         title: item.title,
                       },
+                    });
+
+                    defaultLogger.discovery.dapp.enterDapp({
+                      dappDomain: item.url,
+                      dappName: item.title,
+                      enterMethod: EEnterMethod.historyInSearch,
                     });
                   }}
                 />

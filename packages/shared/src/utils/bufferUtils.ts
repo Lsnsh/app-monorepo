@@ -16,6 +16,9 @@ function toBuffer(
 ): Buffer {
   if (isString(data)) {
     if (encoding === 'hex') {
+      // if (!hexUtils.isHexString(data)) {
+      //   throw new Error('toBuffer ERROR: Invalid hex string');
+      // }
       // eslint-disable-next-line no-param-reassign
       data = hexUtils.stripHexPrefix(data);
     }
@@ -41,7 +44,8 @@ function bytesToHex(bytes: Buffer | Uint8Array | string): string {
   if (isString(bytes)) {
     return bytes;
   }
-  return bytesToHex0(toBuffer(bytes));
+  const buff = toBuffer(bytes);
+  return bytesToHex0(buff);
 }
 
 function bytesToUtf8(bytes: Buffer | Uint8Array): string {
@@ -67,6 +71,6 @@ const bufferUtils = {
 };
 
 // @ts-ignore
-global.$$bufferUtils = bufferUtils;
+globalThis.$$bufferUtils = bufferUtils;
 
 export default bufferUtils;

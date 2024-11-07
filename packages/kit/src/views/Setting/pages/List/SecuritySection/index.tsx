@@ -1,7 +1,5 @@
-import type { ComponentProps } from 'react';
 import { Suspense, useCallback, useMemo } from 'react';
 
-import { AuthenticationType } from 'expo-local-authentication';
 import { useIntl } from 'react-intl';
 
 import { Dialog } from '@onekeyhq/components';
@@ -10,12 +8,16 @@ import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/background
 import { UniversalContainerWithSuspense } from '@onekeyhq/kit/src/components/BiologyAuthComponent/container/UniversalContainer';
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
 import PasswordUpdateContainer from '@onekeyhq/kit/src/components/Password/container/PasswordUpdateContainer';
+import { Section } from '@onekeyhq/kit/src/components/Section';
 import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
+import { useBiometricAuthInfo } from '@onekeyhq/kit/src/hooks/useBiometricAuthInfo';
 import {
   usePasswordBiologyAuthInfoAtom,
   usePasswordPersistAtom,
   usePasswordWebAuthInfoAtom,
 } from '@onekeyhq/kit-bg/src/states/jotai/atoms/password';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import type { IModalSettingParamList } from '@onekeyhq/shared/src/routes';
 import {
   EDAppConnectionModal,
@@ -25,7 +27,6 @@ import {
 import { EReasonForNeedPassword } from '@onekeyhq/shared/types/setting';
 
 import { useOptions } from '../../AppAutoLock/useOptions';
-import { Section } from '../Section';
 
 import { CleanDataItem } from './CleanDataItem';
 
@@ -48,7 +49,7 @@ const AppAutoLockItem = () => {
     <ListItem
       onPress={onPress}
       icon="ClockTimeHistoryOutline"
-      title={intl.formatMessage({ id: 'form__app_lock' })}
+      title={intl.formatMessage({ id: ETranslations.settings_auto_lock })}
       drillIn
     >
       <ListItem.Text primary={text} align="right" />
@@ -60,9 +61,12 @@ const SetPasswordItem = () => {
   const intl = useIntl();
   return (
     <ListItem
-      onPress={() => backgroundApiProxy.servicePassword.promptPasswordVerify()}
+      testID="setting-set-password"
+      onPress={() => {
+        void backgroundApiProxy.servicePassword.promptPasswordVerify();
+      }}
       icon="KeyOutline"
-      title={intl.formatMessage({ id: 'title__set_password' })}
+      title={intl.formatMessage({ id: ETranslations.global_set_password })}
       drillIn
     />
   );
@@ -72,11 +76,11 @@ const ChangePasswordItem = () => {
   const intl = useIntl();
   const onPress = useCallback(async () => {
     const oldEncodedPassword =
-      await backgroundApiProxy.servicePassword.promptPasswordVerify(
-        EReasonForNeedPassword.ChangePassword,
-      );
+      await backgroundApiProxy.servicePassword.promptPasswordVerify({
+        reason: EReasonForNeedPassword.Security,
+      });
     const dialog = Dialog.show({
-      title: intl.formatMessage({ id: 'form__change_password' }),
+      title: intl.formatMessage({ id: ETranslations.global_change_password }),
       renderContent: (
         <PasswordUpdateContainer
           oldEncodedPassword={oldEncodedPassword.password}
@@ -94,7 +98,7 @@ const ChangePasswordItem = () => {
     <ListItem
       onPress={onPress}
       icon="KeyOutline"
-      title={intl.formatMessage({ id: 'form__change_password' })}
+      title={intl.formatMessage({ id: ETranslations.global_change_password })}
       drillIn
     />
   );
@@ -106,21 +110,11 @@ const PasswordItem = () => {
 };
 
 const FaceIdItem = () => {
-  const intl = useIntl();
   const [{ isPasswordSet }] = usePasswordPersistAtom();
   const [{ isSupport: biologyAuthIsSupport, authType }] =
     usePasswordBiologyAuthInfoAtom();
   const [{ isSupport: webAuthIsSupport }] = usePasswordWebAuthInfoAtom();
-
-  let title = intl.formatMessage({ id: 'form__touch_id' });
-  let icon: ComponentProps<typeof ListItem>['icon'] = 'TouchIdSolid';
-
-  if (biologyAuthIsSupport) {
-    if (authType.includes(AuthenticationType.FACIAL_RECOGNITION)) {
-      title = intl.formatMessage({ id: 'content__face_id' });
-      icon = 'FaceIdSolid';
-    }
-  }
+  const { title, icon } = useBiometricAuthInfo();
 
   return isPasswordSet && (biologyAuthIsSupport || webAuthIsSupport) ? (
     <ListItem icon={icon} title={title}>
@@ -141,13 +135,14 @@ const ProtectionItem = () => {
     <ListItem
       onPress={onPress}
       icon="ShieldCheckDoneOutline"
-      title={intl.formatMessage({ id: 'action__protection' })}
+      title={intl.formatMessage({ id: ETranslations.settings_protection })}
       drillIn
     />
   ) : null;
 };
 
 const ConnectedSitesItem = () => {
+  const intl = useIntl();
   const navigation =
     useAppNavigation<IPageNavigationProp<IModalSettingParamList>>();
   const onPress = useCallback(() => {
@@ -157,7 +152,7 @@ const ConnectedSitesItem = () => {
   }, [navigation]);
   return (
     <ListItem
-      title="Connected Sites"
+      title={intl.formatMessage({ id: ETranslations.settings_connected_sites })}
       icon="LinkOutline"
       drillIn
       onPress={onPress}
@@ -166,12 +161,19 @@ const ConnectedSitesItem = () => {
 };
 
 const SignatureRecordItem = () => {
-  const onPress = useCallback(() => {}, []);
+  const intl = useIntl();
+  const navigation =
+    useAppNavigation<IPageNavigationProp<IModalSettingParamList>>();
+  const onPress = useCallback(() => {
+    navigation.push(EModalSettingRoutes.SettingSignatureRecordModal);
+  }, [navigation]);
   return (
     <ListItem
       onPress={onPress}
       icon="NoteOutline"
-      title="Signature Record"
+      title={intl.formatMessage({
+        id: ETranslations.settings_signature_record,
+      })}
       drillIn
     />
   );
@@ -180,13 +182,13 @@ const SignatureRecordItem = () => {
 export const SecuritySection = () => {
   const intl = useIntl();
   return (
-    <Section title={intl.formatMessage({ id: 'form__security_uppercase' })}>
+    <Section title={intl.formatMessage({ id: ETranslations.global_security })}>
       <Suspense fallback={null}>
         <FaceIdItem />
       </Suspense>
       <AppAutoLockItem />
       <PasswordItem />
-      <ConnectedSitesItem />
+      {!platformEnv.isWebDappMode ? <ConnectedSitesItem /> : null}
       <SignatureRecordItem />
       <ProtectionItem />
       <CleanDataItem />

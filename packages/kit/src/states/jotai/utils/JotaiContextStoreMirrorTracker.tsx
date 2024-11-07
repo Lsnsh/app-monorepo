@@ -13,17 +13,29 @@ import {
   useJotaiContextStoreMapAtom,
   useJotaiContextTrackerMap,
 } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import { useDebugComponentRemountLog } from '@onekeyhq/shared/src/utils/debugUtils';
 
 import { AccountSelectorRootProvider } from '../../../components/AccountSelector/AccountSelectorRootProvider';
 import { DiscoveryBrowserRootProvider } from '../../../views/Discovery/components/DiscoveryBrowserRootProvider';
-import { HomeTokenListRootProvider } from '../../../views/Home/components/HomeTokenListRootProvider';
-import { SwapRootProvider } from '../../../views/Swap/pages/SwapRootProvider';
+import { EarnProvider } from '../../../views/Earn/EarnProvider';
+import { HomeTokenListRootProvider } from '../../../views/Home/components/HomeTokenListProvider/HomeTokenListRootProvider';
+import { UrlAccountHomeTokenListProvider } from '../../../views/Home/components/HomeTokenListProvider/UrlAccountHomeTokenListProvider';
+import { MarketWatchListProvider } from '../../../views/Market/MarketWatchListProvider';
+import {
+  SwapModalRootProvider,
+  SwapRootProvider,
+} from '../../../views/Swap/pages/SwapRootProvider';
+import { UniversalSearchProvider } from '../../../views/UniversalSearch/pages/UniversalSearchProvider';
 
 import { buildJotaiContextStoreId } from './jotaiContextStore';
 
 // AccountSelectorMapTracker
 export function JotaiContextStoreMirrorTracker(data: IJotaiContextStoreData) {
   const { storeName, accountSelectorInfo } = data;
+  useDebugComponentRemountLog({
+    name: `JotaiContextStoreMirrorTracker`,
+    payload: data,
+  });
   const { setMap } = useJotaiContextTrackerMap();
   const storeId = buildJotaiContextStoreId(data);
   useEffect(() => {
@@ -84,7 +96,7 @@ function JotaiContextRootProvidersAutoMountCmp() {
       'JotaiContextRootProvidersAutoMount mapEntries:',
       mapEntries,
       getJotaiContextTrackerMap(),
-      global.$$jotaiContextStore,
+      globalThis.$$jotaiContextStore,
     );
   }
   return (
@@ -119,11 +131,26 @@ function JotaiContextRootProvidersAutoMountCmp() {
           case EJotaiContextStoreNames.homeTokenList: {
             return <HomeTokenListRootProvider key={key} />;
           }
+          case EJotaiContextStoreNames.urlAccountHomeTokenList: {
+            return <UrlAccountHomeTokenListProvider key={key} />;
+          }
           case EJotaiContextStoreNames.discoveryBrowser: {
             return <DiscoveryBrowserRootProvider key={key} />;
           }
+          case EJotaiContextStoreNames.universalSearch: {
+            return <UniversalSearchProvider key={key} />;
+          }
+          case EJotaiContextStoreNames.marketWatchList: {
+            return <MarketWatchListProvider key={key} />;
+          }
           case EJotaiContextStoreNames.swap: {
             return <SwapRootProvider key={key} />;
+          }
+          case EJotaiContextStoreNames.swapModal: {
+            return <SwapModalRootProvider key={key} />;
+          }
+          case EJotaiContextStoreNames.earn: {
+            return <EarnProvider key={key} />;
           }
           default: {
             const exhaustiveCheck: never = storeName;

@@ -23,9 +23,9 @@ module.exports = ({ basePath }) => ({
       overlay: false,
     },
     onBeforeSetupMiddleware: (devServer) => {
-      // proxy all requests with x-proxy header
+      // proxy all requests with x-onekey-dev-proxy header
       devServer.app.use((request, response, next) => {
-        const target = request.headers['x-proxy'];
+        const target = request.headers['x-onekey-dev-proxy'];
         if (target) {
           const proxyMiddleware = createProxyMiddleware({
             target,
@@ -34,7 +34,7 @@ module.exports = ({ basePath }) => ({
             logLevel: 'silent',
           });
           console.log(
-            `[X-Proxy] ${request.method} ${request.originalUrl} -> ${target}`,
+            `[X-OneKey-Dev-Proxy] ${request.method} ${request.originalUrl} -> ${target}`,
           );
           return proxyMiddleware(request, response, next);
         }
@@ -56,28 +56,19 @@ module.exports = ({ basePath }) => ({
             res.write(text);
             res.end();
           };
-          if (
-            req.headers &&
-            req.headers.cookie &&
-            req.headers.cookie.includes('rrt=1')
-          ) {
-            // read node_modules/react-render-tracker/dist/react-render-tracker.js content
-            const filePath = path.join(
-              __dirname,
-              '../../node_modules/react-render-tracker/dist/react-render-tracker.js',
-            );
-            fs.readFile(filePath, 'utf8', (err, data) => {
-              if (err) {
-                console.error(err);
-                res.status(500).send(`Error reading file:  ${filePath}`);
-                return;
-              }
-              sendResponse(data);
-            });
-          } else {
-            const logScript = `console.log('react-render-tracker is disabled')`;
-            sendResponse(logScript);
-          }
+          // read node_modules/react-render-tracker/dist/react-render-tracker.js content
+          const filePath = path.join(
+            __dirname,
+            '../../node_modules/react-render-tracker/dist/react-render-tracker.js',
+          );
+          fs.readFile(filePath, 'utf8', (err, data) => {
+            if (err) {
+              console.error(err);
+              res.status(500).send(`Error reading file:  ${filePath}`);
+              return;
+            }
+            sendResponse(data);
+          });
         },
       );
     },

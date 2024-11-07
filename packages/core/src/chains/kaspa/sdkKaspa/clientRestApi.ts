@@ -2,10 +2,11 @@ import Axios from 'axios';
 import { get } from 'lodash';
 
 import { OneKeyInternalError } from '@onekeyhq/shared/src/errors';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 
 import { submitTransactionFromString } from './transaction';
 
-import type { GetTransactionResponse, UTXOResponse } from './types';
+import type { IKaspaGetTransactionResponse, IKaspaUTXOResponse } from './types';
 import type { AxiosError, AxiosInstance } from 'axios';
 
 // https://api.kaspa.org/docs
@@ -81,9 +82,9 @@ export class RestAPIClient {
     }
   }
 
-  async queryUtxos(address: string): Promise<UTXOResponse[]> {
+  async queryUtxos(address: string): Promise<IKaspaUTXOResponse[]> {
     try {
-      const resp = await this.axios.get<UTXOResponse[]>(
+      const resp = await this.axios.get<IKaspaUTXOResponse[]>(
         `/addresses/${address}/utxos`,
         {
           headers: {
@@ -115,14 +116,14 @@ export class RestAPIClient {
         if (message.match(/payment of \d+ is dust/)) {
           throw new OneKeyInternalError({
             message,
-            key: 'msg__amount_too_small',
+            key: ETranslations.send_amount_too_small,
           });
         }
 
         if (message.toLowerCase().indexOf('insufficient balance') !== -1) {
           throw new OneKeyInternalError({
             message,
-            key: 'msg__broadcast_dot_tx_Insufficient_fee',
+            key: ETranslations.earn_insufficient_balance,
           });
         }
 
@@ -130,8 +131,10 @@ export class RestAPIClient {
       });
   }
 
-  async getTransaction(transactionId: string): Promise<GetTransactionResponse> {
-    const resp = await this.axios.get<GetTransactionResponse>(
+  async getTransaction(
+    transactionId: string,
+  ): Promise<IKaspaGetTransactionResponse> {
+    const resp = await this.axios.get<IKaspaGetTransactionResponse>(
       `/transactions/${transactionId}?inputs=true&outputs=true&resolve_previous_outpoints=light`,
       {
         headers: {
@@ -142,8 +145,10 @@ export class RestAPIClient {
     return resp.data;
   }
 
-  async getTransactions(txIds: string[]): Promise<GetTransactionResponse[]> {
-    const resp = await this.axios.post<GetTransactionResponse[]>(
+  async getTransactions(
+    txIds: string[],
+  ): Promise<IKaspaGetTransactionResponse[]> {
+    const resp = await this.axios.post<IKaspaGetTransactionResponse[]>(
       `/transactions/search?resolve_previous_outpoints=light`,
       {
         transactionIds: [...txIds],
@@ -159,8 +164,8 @@ export class RestAPIClient {
 
   async getTransactionsByAddress(
     address: string,
-  ): Promise<GetTransactionResponse[]> {
-    const resp = await this.axios.get<GetTransactionResponse[]>(
+  ): Promise<IKaspaGetTransactionResponse[]> {
+    const resp = await this.axios.get<IKaspaGetTransactionResponse[]>(
       `/addresses/${address}/full-transactions?limit=50&offset=0&resolve_previous_outpoints=light`,
       {
         headers: {

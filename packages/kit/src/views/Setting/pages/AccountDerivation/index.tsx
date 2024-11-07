@@ -1,30 +1,37 @@
 import { type FC } from 'react';
 
+import { useIntl } from 'react-intl';
+
 import { Page, SizableText, Stack, XStack } from '@onekeyhq/components';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
-import { AccountSelectorProviderMirror } from '@onekeyhq/kit/src/components/AccountSelector';
-import { DeriveTypeSelectorTrigger } from '@onekeyhq/kit/src/components/AccountSelector/DeriveTypeSelectorTrigger';
+import { DeriveTypeSelectorTriggerGlobalStandAlone } from '@onekeyhq/kit/src/components/AccountSelector/DeriveTypeSelectorTrigger';
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
 import { usePromiseResult } from '@onekeyhq/kit/src/hooks/usePromiseResult';
-import { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 
 type IAccountDerivationListItemProps = {
-  num: number;
   title: string;
   icon?: string;
+  networkId: string;
 };
 
+const offset = { mainAxis: -4, crossAxis: -10 };
+
 const AccountDerivationListItem: FC<IAccountDerivationListItemProps> = ({
-  num,
   title,
   icon,
+  networkId,
 }) => (
-  <DeriveTypeSelectorTrigger
-    num={num}
-    miniMode
+  <DeriveTypeSelectorTriggerGlobalStandAlone
+    networkId={networkId}
     placement="bottom-end"
+    offset={offset}
     renderTrigger={({ label }) => (
-      <ListItem title={title} avatarProps={{ src: icon }}>
+      <ListItem
+        userSelect="none"
+        title={title}
+        avatarProps={{ src: icon, size: '$8' }}
+      >
         <XStack>
           <SizableText mr="$3">{label}</SizableText>
           <ListItem.DrillIn name="ChevronDownSmallSolid" />
@@ -36,7 +43,7 @@ const AccountDerivationListItem: FC<IAccountDerivationListItemProps> = ({
 
 const AccountDerivation = () => {
   const {
-    result: { enabledNum, availableNetworksMap, items },
+    result: { items },
     isLoading,
   } = usePromiseResult(
     () => backgroundApiProxy.serviceSetting.getAccountDerivationConfig(),
@@ -46,34 +53,32 @@ const AccountDerivation = () => {
       watchLoading: true,
     },
   );
+  const intl = useIntl();
   return (
-    <Page>
+    <Page scrollEnabled>
+      <Page.Header
+        title={intl.formatMessage({
+          id: ETranslations.settings_account_derivation_path,
+        })}
+      />
       <Stack px="$5" py="$3">
         <SizableText size="$bodyLg">
-          If you don't see the accounts you expect, try switching the derivation
-          path.
+          {intl.formatMessage({
+            id: ETranslations.settings_account_derivation_path_desc,
+          })}
         </SizableText>
       </Stack>
       {!isLoading ? (
-        <AccountSelectorProviderMirror
-          enabledNum={enabledNum}
-          config={{
-            sceneName: EAccountSelectorSceneName.settings,
-            sceneUrl: '',
-          }}
-          availableNetworksMap={availableNetworksMap}
-        >
-          <Stack>
-            {items.map((o) => (
-              <AccountDerivationListItem
-                key={o.num}
-                title={o.title}
-                icon={o.icon}
-                num={o.num}
-              />
-            ))}
-          </Stack>
-        </AccountSelectorProviderMirror>
+        <Stack>
+          {items.map((o) => (
+            <AccountDerivationListItem
+              key={o.icon}
+              title={o.title}
+              icon={o.icon}
+              networkId={o.defaultNetworkId}
+            />
+          ))}
+        </Stack>
       ) : null}
     </Page>
   );

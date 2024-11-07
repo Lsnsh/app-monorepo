@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import * as React from 'react';
 
 import { Header } from '@react-navigation/elements';
 import { get } from 'lodash';
-import { useTheme } from 'tamagui';
+import { useMedia, useTheme } from 'tamagui';
 
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
@@ -16,6 +16,7 @@ import HeaderSearchBar from './HeaderSearchBar';
 
 import type { IOnekeyStackHeaderProps } from './HeaderScreenOptions';
 import type { IStackHeaderProps } from '../ScreenProps';
+import type { Layout } from '@react-navigation/elements';
 import type {
   HeaderBackButtonProps,
   HeaderOptions,
@@ -50,7 +51,9 @@ function HeaderView({
     headerStyle,
     headerBackground,
     headerShown = true,
+    // native HeaderSearchBar in packages/components/src/layouts/Page/PageHeader.tsx
     headerSearchBarOptions,
+    headerTitleStyle,
   } = options || {};
 
   const theme = useTheme();
@@ -69,32 +72,41 @@ function HeaderView({
 
   const headerLeftView = useCallback(
     (props: HeaderBackButtonProps): ReactNode => (
-      <XStack>
-        {!disableClose ? (
-          <HeaderBackButton
-            canGoBack={!topStack}
-            onPress={onBackCallback}
-            isRootScreen={isRootScreen}
-            isModelScreen={isModelScreen}
-            {...props}
-          />
-        ) : null}
-        {headerLeft?.({
-          ...props,
-          canGoBack: !topStack,
-        })}
+      <XStack className="app-region-no-drag">
+        <HeaderBackButton
+          canGoBack={!topStack}
+          onPress={onBackCallback}
+          isRootScreen={isRootScreen}
+          isModelScreen={isModelScreen}
+          disableClose={disableClose}
+          renderLeft={headerLeft}
+          {...props}
+        />
       </XStack>
     ),
     [
-      disableClose,
-      isModelScreen,
-      isRootScreen,
-      onBackCallback,
       topStack,
+      onBackCallback,
+      isRootScreen,
+      isModelScreen,
+      disableClose,
       headerLeft,
     ],
   );
 
+  const { gtMd } = useMedia();
+
+  const layout = useMemo(() => {
+    if (platformEnv.isNative) {
+      return undefined;
+    }
+    if (isModelScreen) {
+      return gtMd
+        ? ({ width: 640 } as Layout)
+        : ({ width: window.innerWidth } as Layout);
+    }
+    return undefined;
+  }, [gtMd, isModelScreen]);
   if (!headerShown) {
     return null;
   }
@@ -125,6 +137,7 @@ function HeaderView({
           }}
         >
           <Header
+            layout={layout}
             title={getHeaderTitle(options, route.name)}
             headerTintColor={theme.text.val}
             headerLeft={headerLeftView}
@@ -143,6 +156,7 @@ function HeaderView({
             headerTitleStyle={{
               lineHeight: 28,
               fontWeight: '600',
+              ...(headerTitleStyle as any),
             }}
             headerTitleContainerStyle={{
               marginHorizontal: 0,
@@ -162,6 +176,7 @@ function HeaderView({
             autoFocus={headerSearchBarOptions?.autoFocus}
             placeholder={headerSearchBarOptions?.placeholder}
             onChangeText={headerSearchBarOptions?.onChangeText}
+            onSearchTextChange={headerSearchBarOptions?.onSearchTextChange}
             onBlur={headerSearchBarOptions?.onBlur}
             onFocus={headerSearchBarOptions?.onFocus}
             onSearchButtonPress={headerSearchBarOptions?.onSearchButtonPress}
@@ -174,3 +189,5 @@ function HeaderView({
 }
 
 export default memo(HeaderView);
+
+export { NavBackButton, NavCloseButton } from './HeaderBackButton';

@@ -1,6 +1,8 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useMemo } from 'react';
 
+import { useIntl } from 'react-intl';
+
 import {
   Empty,
   Icon,
@@ -12,14 +14,17 @@ import {
 } from '@onekeyhq/components';
 import { ImageSource } from '@onekeyhq/components/src/primitives/Image/ImageSource';
 import useConfigurableChainSelector from '@onekeyhq/kit/src/views/ChainSelector/hooks/useChainSelector';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type { IServerNetwork } from '@onekeyhq/shared/types';
 import type { ICategory, IDApp } from '@onekeyhq/shared/types/discovery';
 
+import { ChunkedItemsSkeletonView } from './ChunkedItemsSkeletonView';
 import { ChunkedItemsView, chunkArray } from './ChunkedItemsView';
 
 import type { IMatchDAppItemType } from '../../../types';
 
 export function ExploreView({
+  isLoading,
   dAppList,
   categoryResult,
   handleOpenWebSite,
@@ -29,6 +34,7 @@ export function ExploreView({
   setSelectedNetwork,
   networkList,
 }: {
+  isLoading: boolean | undefined;
   dAppList:
     | {
         data: IDApp[];
@@ -47,6 +53,7 @@ export function ExploreView({
   networkList: string[];
   handleOpenWebSite: ({ dApp, webSite }: IMatchDAppItemType) => void;
 }) {
+  const intl = useIntl();
   const media = useMedia();
   const chunkSize = useMemo(() => {
     if (!media.gtMd) {
@@ -78,16 +85,63 @@ export function ExploreView({
     ),
     [handleOpenWebSite],
   );
+  const renderSkeletonView = useCallback(
+    (dataChunks: IDApp[][], categoryId: string) => (
+      <ChunkedItemsSkeletonView
+        key={categoryId}
+        isExploreView
+        dataChunks={dataChunks}
+      />
+    ),
+    [],
+  );
+  const Content = useMemo(() => {
+    if (isEmpty) {
+      return (
+        <Empty
+          icon="SearchOutline"
+          title={intl.formatMessage({ id: ETranslations.global_no_results })}
+        />
+      );
+    }
+    if (isLoading) {
+      return renderSkeletonView(
+        chunkArray(
+          Array.from({ length: 30 }).map(
+            (_, index) =>
+              ({
+                dappId: index.toString(),
+              } as IDApp),
+          ),
+          chunkSize,
+        ),
+        selectedCategory,
+      );
+    }
+    return renderChunkItemView(
+      chunkArray(dAppList?.data ?? [], chunkSize),
+      selectedCategory,
+    );
+  }, [
+    intl,
+    isEmpty,
+    isLoading,
+    dAppList?.data,
+    chunkSize,
+    selectedCategory,
+    renderSkeletonView,
+    renderChunkItemView,
+  ]);
   const openChainSelector = useConfigurableChainSelector();
   return (
     <>
       <XStack py="$2">
         <Select
-          title="Categories"
+          title={intl.formatMessage({ id: ETranslations.explore_categories })}
           items={selectOptions}
           value={selectedCategory}
           onChange={setSelectedCategory}
-          renderTrigger={({ label }) => (
+          renderTrigger={({ label, onPress }) => (
             <XStack
               mr="$2.5"
               py="$1.5"
@@ -102,6 +156,7 @@ export function ExploreView({
               pressStyle={{
                 bg: '$bgStrongActive',
               }}
+              onPress={onPress}
             >
               <SizableText size="$bodyMdMedium" px="$1">
                 {label}
@@ -154,14 +209,7 @@ export function ExploreView({
           <Icon name="ChevronDownSmallOutline" size="$5" color="$iconSubdued" />
         </XStack>
       </XStack>
-      {isEmpty ? (
-        <Empty icon="SearchOutline" title="No Results" />
-      ) : (
-        renderChunkItemView(
-          chunkArray(dAppList?.data ?? [], chunkSize),
-          selectedCategory,
-        )
-      )}
+      {Content}
     </>
   );
 }

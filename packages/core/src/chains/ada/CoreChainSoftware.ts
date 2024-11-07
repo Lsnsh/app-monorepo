@@ -1,7 +1,25 @@
+import { checkIsDefined } from '@onekeyhq/shared/src/utils/assertUtils';
 import bufferUtils from '@onekeyhq/shared/src/utils/bufferUtils';
 
 import { CoreChainApiBase } from '../../base/CoreChainApiBase';
-import { encrypt } from '../../secret';
+import { decrypt, encrypt } from '../../secret';
+import {
+  ECoreApiExportedSecretKeyType,
+  type ICoreApiGetAddressItem,
+  type ICoreApiGetAddressQueryImported,
+  type ICoreApiGetAddressesQueryHd,
+  type ICoreApiGetAddressesResult,
+  type ICoreApiGetExportedSecretKey,
+  type ICoreApiGetPrivateKeysMapHdQuery,
+  type ICoreApiPrivateKeysMap,
+  type ICoreApiSignAccount,
+  type ICoreApiSignBasePayload,
+  type ICoreApiSignMsgPayload,
+  type ICoreApiSignTxPayload,
+  type ICurveName,
+  type ISignedTxPro,
+  type IUnsignedMessageAda,
+} from '../../types';
 import { getUtxoAccountPrefixPath } from '../../utils';
 
 import {
@@ -10,30 +28,16 @@ import {
   decodePrivateKeyByXprv,
   encodePrivateKey,
   generateExportedCredential,
+  generateXprvFromPrivateKey,
   getPathIndex,
   getXprvString,
   sdk,
 } from './sdkAda';
 import { EAdaNetworkId } from './types';
 
-import type { ISigner } from '../../base/ChainSigner';
-import type {
-  ICoreApiGetAddressItem,
-  ICoreApiGetAddressQueryImported,
-  ICoreApiGetAddressesQueryHd,
-  ICoreApiGetAddressesResult,
-  ICoreApiGetPrivateKeysMapHdQuery,
-  ICoreApiPrivateKeysMap,
-  ICoreApiSignAccount,
-  ICoreApiSignBasePayload,
-  ICoreApiSignMsgPayload,
-  ICoreApiSignTxPayload,
-  ICurveName,
-  ISignedTxPro,
-  IUnsignedMessageAda,
-} from '../../types';
 import type { IAdaBaseAddressInfo, IAdaStakingAddressInfo } from './sdkAda';
 import type { IAdaUTXO, IEncodedTxAda } from './types';
+import type { ISigner } from '../../base/ChainSigner';
 
 const curve: ICurveName = 'ed25519';
 
@@ -60,7 +64,7 @@ export default class CoreChainSoftware extends CoreChainApiBase {
   override async getPrivateKeys(
     payload: ICoreApiSignBasePayload,
   ): Promise<ICoreApiPrivateKeysMap> {
-    // throw new Error('Method not implemented.');
+    // throw new NotImplemented();;
     return this.baseGetPrivateKeys({
       payload,
       curve,
@@ -87,7 +91,6 @@ export default class CoreChainSoftware extends CoreChainApiBase {
   override async signTransaction(
     payload: ICoreApiSignTxPayload,
   ): Promise<ISignedTxPro> {
-    // throw new Error('Method not implemented.');
     const { unsignedTx, account } = payload;
     const encodedTx = unsignedTx.encodedTx as IEncodedTxAda;
     const signer = await this.baseGetSingleSigner({
@@ -171,6 +174,7 @@ export default class CoreChainSoftware extends CoreChainApiBase {
         [firstAddressRelPath]: address,
         [stakingAddressPath]: stakingAddress.address,
       },
+      relPath: firstAddressRelPath,
     };
     return result;
   }
@@ -178,13 +182,13 @@ export default class CoreChainSoftware extends CoreChainApiBase {
   override async getAddressFromPrivate(
     query: ICoreApiGetAddressQueryImported,
   ): Promise<ICoreApiGetAddressItem> {
-    // throw new Error('Method not implemented.');
+    // throw new NotImplemented();;
     const { privateKeyRaw } = query;
     const privateKey = bufferUtils.toBuffer(privateKeyRaw);
 
     const encodeKey = encodePrivateKey(privateKey);
 
-    const index = parseInt(encodeKey.index);
+    const index = parseInt(encodeKey.index, 10);
     const addressInfos = batchGetShelleyAddressByRootKey(
       encodeKey.rootKey,
       [index],
@@ -232,5 +236,55 @@ export default class CoreChainSoftware extends CoreChainApiBase {
       return result;
     });
     return { addresses };
+  }
+
+  async getExportedCredentialHd({
+    password,
+    account,
+    hdCredential,
+  }: ICoreApiGetPrivateKeysMapHdQuery): Promise<string> {
+    const { path } = account;
+
+    const xprv = await generateExportedCredential(password, hdCredential, path);
+    return xprv;
+  }
+
+  override async getExportedSecretKey(
+    query: ICoreApiGetExportedSecretKey,
+  ): Promise<string> {
+    const {
+      account,
+      keyType,
+      // addressEncoding,
+
+      // networkInfo,
+      password,
+      credentials,
+    } = query;
+    console.log(
+      'ExportSecretKeys >>>> ada',
+      this.baseGetCredentialsType({ credentials }),
+    );
+    const { privateKeyRaw } = await this.baseGetDefaultPrivateKey(query);
+
+    if (!privateKeyRaw) {
+      throw new Error('privateKeyRaw is required');
+    }
+
+    if (keyType === ECoreApiExportedSecretKeyType.xprvt) {
+      if (credentials.hd) {
+        return generateExportedCredential(
+          password,
+          checkIsDefined(credentials.hd),
+          account.path,
+        );
+      }
+      if (credentials.imported) {
+        const privateKey = decrypt(password, privateKeyRaw);
+        return generateXprvFromPrivateKey(privateKey);
+      }
+    }
+
+    throw new Error(`SecretKey type not support: ${keyType}`);
   }
 }

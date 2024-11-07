@@ -1,3 +1,4 @@
+import type { IFuseResultMatch } from '@onekeyhq/shared/src/modules3rdParty/fuse';
 import type { IDApp } from '@onekeyhq/shared/types/discovery';
 
 export type IBrowserType = 'StandardBrowser' | 'MultiTabBrowser';
@@ -8,12 +9,18 @@ export interface IBrowserHistory {
   url: string;
   createdAt: number;
   logo?: string;
+  titleMatch?: IFuseResultMatch;
+  urlMatch?: IFuseResultMatch;
 }
 
 export interface IBrowserBookmark {
   title: string;
   url: string;
   logo?: string;
+}
+
+export interface IBrowserRiskWhiteList {
+  url: string;
 }
 
 export interface IGotoSiteFnParams {
@@ -66,6 +73,7 @@ export interface IWebTab {
   url: string;
   isActive?: boolean;
   title?: string;
+  customTitle?: string;
   favicon?: string;
   thumbnail?: string;
   isBookmark?: boolean;
@@ -89,6 +97,7 @@ export interface IMobileBottomOptionsProps {
   onBookmarkPress: (bookmark: boolean) => void;
   onRefresh: () => void;
   onShare: () => void;
+  onCopyUrl: () => void;
   isPinned: boolean;
   onPinnedPress: (pinned: boolean) => void;
   onBrowserOpen: () => void;

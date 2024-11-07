@@ -1,11 +1,13 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { getStringAsync, setStringAsync } from 'expo-clipboard';
 import { useIntl } from 'react-intl';
 
-import type { ILocaleIds } from '@onekeyhq/shared/src/locale';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 
 import { Toast } from '../actions/Toast';
+
+import type { IPasteEventParams } from '../forms';
 
 const getClipboard = async () => {
   const str = await getStringAsync();
@@ -16,15 +18,50 @@ export function useClipboard() {
   const intl = useIntl();
 
   const copyText = useCallback(
-    (text: string, successMessageId?: ILocaleIds) => {
+    (text: string, successMessageId?: ETranslations) => {
       if (!text) return;
       setTimeout(() => setStringAsync(text), 200);
       Toast.success({
-        title: intl.formatMessage({ id: successMessageId || 'msg__copied' }),
+        title: intl.formatMessage({
+          id: successMessageId || ETranslations.global_copied,
+        }),
       });
     },
     [intl],
   );
 
-  return { copyText, getClipboard };
+  const clearText = useCallback(() => {
+    void setStringAsync('');
+    Toast.success({
+      title: intl.formatMessage({
+        id: ETranslations.feedback_pasted_and_cleared,
+      }),
+    });
+  }, [intl]);
+
+  const onPasteClearText = useCallback(
+    (event: IPasteEventParams) => {
+      if (!event.nativeEvent.items?.length) {
+        return;
+      }
+
+      const hasText = event.nativeEvent.items.some(
+        (item) => item.type === 'text/plain' && item.data?.trim() !== '',
+      );
+
+      if (!hasText) {
+        return;
+      }
+
+      setTimeout(() => {
+        clearText();
+      }, 100);
+    },
+    [clearText],
+  );
+
+  return useMemo(
+    () => ({ copyText, clearText, onPasteClearText, getClipboard }),
+    [clearText, onPasteClearText, copyText],
+  );
 }

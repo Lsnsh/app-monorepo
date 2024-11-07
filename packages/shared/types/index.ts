@@ -2,11 +2,6 @@ import type {
   IInjectedProviderNamesStrings,
   IJsonRpcRequest,
 } from '@onekeyfe/cross-inpage-provider-types';
-import type { Features, IDeviceType } from '@onekeyfe/hd-core';
-
-export type IOneKeyDeviceType = IDeviceType;
-
-export type IOneKeyDeviceFeatures = Features;
 
 export type IDappSourceInfo = {
   id: string | number; // ServicePromise callback id to reject/resolve
@@ -22,10 +17,15 @@ export enum ENetworkStatus {
   LISTED = 'LISTED',
 }
 
+export const EXT_UI_TO_BG_PORT_NAME = 'onekey@EXT_PORT_UI_TO_BG';
+
 export interface INetworkFeeInfo {
   code: string;
   symbol: string;
   decimals: number;
+  isEIP1559FeeEnabled?: boolean;
+  isWithL1BaseFee?: boolean;
+  maxSendFeeUpRatio?: number;
 }
 
 export interface INetworkRpcURL {
@@ -44,6 +44,7 @@ export interface INetworkExplorerConfig {
   address?: string;
   transaction?: string;
   block?: string;
+  token?: string;
 }
 
 export type IServerNetwork = {
@@ -59,30 +60,32 @@ export type IServerNetwork = {
   decimals: number;
   feeMeta: INetworkFeeInfo;
   defaultEnabled: boolean;
+  backendIndex?: boolean;
   support?: string[];
-  balance2FeeDecimals: number;
   status: ENetworkStatus;
-  clientApi?: Record<string, string>;
   isTestnet: boolean;
-  rpcURLs: INetworkRpcURL[];
-  priceConfigs: INetworkPriceConfig[];
-  explorers: INetworkExplorerConfig[];
   extensions?: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
+  isAllNetworks?: boolean;
+  explorerURL?: string;
+  isCustomNetwork?: boolean;
 };
 
 export enum EOnekeyDomain {
   ONEKEY_SO = 'onekey.so',
-  ONEKEY_CN = 'onekeycn.com',
 }
 
 export enum EAccountSelectorSceneName {
   home = 'home',
+  homeUrlAccount = 'homeUrlAccount',
   swap = 'swap',
   discover = 'discover',
-  settings = 'settings',
   addressInput = 'addressInput', // test Gallery AddressInput test
+}
+
+export enum EAccountSelectorAutoSelectTriggerBy {
+  removeWallet = 'removeWallet',
+  removeLastOthersAccount = 'removeLastOthersAccount',
+  removeAccount = 'removeAccount',
 }
 
 export type INotPromise<T> = T extends Promise<any> ? never : T;

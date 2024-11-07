@@ -1,7 +1,9 @@
-import { useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useMemo, useState } from 'react';
 
 import { InteractionManager } from 'react-native';
 import { useMedia, withStaticProperties } from 'tamagui';
+
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
 import { Popover, Trigger } from '../../actions';
 import { ListView, SectionList } from '../../layouts';
@@ -20,40 +22,38 @@ import type {
   ISelectTriggerProps,
 } from './type';
 import type { IListViewProps, ISectionListProps } from '../../layouts';
+import type { GestureResponderEvent } from 'react-native';
 
 const useTriggerLabel = (value: string) => {
-  const { selectedItemRef, sections, items } = useContext(SelectContext);
-  if (!value || selectedItemRef.current.value !== value) {
-    return '';
-  }
-  if (selectedItemRef.current.label) {
-    return selectedItemRef.current.label;
-  }
+  const { sections, items } = useContext(SelectContext);
+  return useMemo(() => {
+    if (!value) {
+      return '';
+    }
 
-  if (sections) {
-    for (let i = 0; i < sections.length; i += 1) {
-      const section = sections[i];
-      for (let j = 0; j < section.data.length; j += 1) {
-        const item = section.data[j];
+    if (sections) {
+      for (let i = 0; i < sections.length; i += 1) {
+        const section = sections[i];
+        for (let j = 0; j < section.data.length; j += 1) {
+          const item = section.data[j];
+          if (item.value === value) {
+            return item.label;
+          }
+        }
+      }
+    }
+
+    if (items) {
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
         if (item.value === value) {
-          selectedItemRef.current.label = item.label;
           return item.label;
         }
       }
     }
-  }
 
-  if (items) {
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      if (item.value === value) {
-        selectedItemRef.current.label = item.label;
-        return item.label;
-      }
-    }
-  }
-
-  return '';
+    return '';
+  }, [items, sections, value]);
 };
 
 function SelectTrigger({ renderTrigger }: ISelectTriggerProps) {
@@ -62,6 +62,13 @@ function SelectTrigger({ renderTrigger }: ISelectTriggerProps) {
   const handleTriggerPressed = useCallback(() => {
     changeOpenStatus?.(true);
   }, [changeOpenStatus]);
+  const renderTriggerOnPress = useCallback(
+    (event: GestureResponderEvent) => {
+      handleTriggerPressed();
+      event.stopPropagation();
+    },
+    [handleTriggerPressed],
+  );
   const renderValue = labelInValue
     ? (value as ISelectItem)?.value
     : (value as string);
@@ -69,12 +76,38 @@ function SelectTrigger({ renderTrigger }: ISelectTriggerProps) {
   return (
     <Trigger onPress={handleTriggerPressed} disabled={disabled}>
       {renderTrigger({
+        onPress: renderTriggerOnPress,
         value: renderValue,
         label,
         placeholder,
         disabled,
       })}
     </Trigger>
+  );
+}
+
+function SelectItemView({
+  label,
+  description,
+}: {
+  label: string;
+  description?: string;
+}) {
+  return (
+    <>
+      <SizableText
+        $gtMd={{
+          size: '$bodyMd',
+        }}
+      >
+        {label}
+      </SizableText>
+      {description ? (
+        <SizableText mt="$0.5" size="$bodyMd" color="$textSubdued">
+          {description}
+        </SizableText>
+      ) : null}
+    </>
   );
 }
 
@@ -110,25 +143,15 @@ function SelectItem({
         pressStyle={{ bg: '$bgActive' }}
         onPress={handleSelect}
         testID={testID}
+        alignItems="center"
       >
         {leading ? (
-          <Stack alignContent="center" justifyContent="center" pr="$4">
+          <Stack alignContent="center" justifyContent="center" pr="$3">
             {leading}
           </Stack>
         ) : null}
         <Stack flex={1} userSelect="none">
-          <SizableText
-            $gtMd={{
-              size: '$bodyMd',
-            }}
-          >
-            {label}
-          </SizableText>
-          {description ? (
-            <SizableText mt="$0.5" size="$bodyMd" color="$textSubdued">
-              {description}
-            </SizableText>
-          ) : null}
+          <SelectItemView label={label} description={description} />
         </Stack>
         {selectedValue === value ? (
           <Icon
@@ -175,7 +198,7 @@ const useRenderPopoverTrigger = () => {
 };
 
 const requestIdleCallback = (callback: () => void) => {
-  setTimeout(callback, 50);
+  setTimeout(callback, 150);
 };
 
 function SelectContent() {
@@ -191,17 +214,16 @@ function SelectContent() {
     floatingPanelProps,
     placement,
     labelInValue,
-    selectedItemRef,
+    offset,
   } = useContext(SelectContext);
   const handleSelect = useCallback(
     (item: ISelectItem) => {
       changeOpenStatus?.(false);
       requestIdleCallback(() => {
-        selectedItemRef.current = item;
         onValueChange?.(labelInValue ? item : item.value);
       });
     },
-    [changeOpenStatus, labelInValue, onValueChange, selectedItemRef],
+    [changeOpenStatus, labelInValue, onValueChange],
   );
 
   const handleOpenChange = useCallback(
@@ -292,13 +314,14 @@ function SelectContent() {
         ...sheetProps,
       }}
       floatingPanelProps={{
-        maxHeight: '60vh',
+        maxHeight: platformEnv.isNative ? undefined : '60vh',
         width: '$56',
         ...floatingPanelProps,
       }}
       placement={placement}
       renderTrigger={popoverTrigger}
       renderContent={renderContent}
+      offset={offset}
     />
   );
 }
@@ -314,18 +337,11 @@ function SelectFrame<T extends string | ISelectItem>({
   disabled,
   sections,
   sheetProps,
+  offset,
   labelInValue = false,
   floatingPanelProps,
   placement = 'bottom-start',
 }: ISelectProps<T>) {
-  const selectedItemRef = useRef<ISelectItem>(
-    labelInValue
-      ? (value as ISelectItem)
-      : {
-          label: '',
-          value: value as string,
-        },
-  );
   const [isOpen, setIsOpen] = useState(false);
   const changeOpenStatus = useCallback(
     (openStatus: boolean) => {
@@ -346,13 +362,13 @@ function SelectFrame<T extends string | ISelectItem>({
       onValueChange: onChange,
       items,
       sections,
-      selectedItemRef,
       title,
       placeholder,
       disabled,
       sheetProps,
       floatingPanelProps,
       placement,
+      offset,
     }),
     [
       isOpen,
@@ -368,6 +384,7 @@ function SelectFrame<T extends string | ISelectItem>({
       sheetProps,
       floatingPanelProps,
       placement,
+      offset,
     ],
   );
   return (
@@ -380,8 +397,10 @@ function SelectFrame<T extends string | ISelectItem>({
 function BasicSelect<T extends string | ISelectItem>({
   renderTrigger,
   testID = '',
+  defaultTriggerInputProps,
   ...props
 }: ISelectProps<T>) {
+  const media = useMedia();
   const defaultRenderTrigger = useCallback(
     ({ label, placeholder, disabled }: ISelectRenderTriggerProps) => (
       <>
@@ -392,16 +411,24 @@ function BasicSelect<T extends string | ISelectItem>({
           readonly
           flex={1}
           testID={`${testID}-input`}
+          {...defaultTriggerInputProps}
         />
-        <Icon
+        {/* <Icon
           name="ChevronBottomSolid"
           position="absolute"
           right="$3"
           top="$2"
+        /> */}
+        <Icon
+          name="ChevronDownSmallOutline"
+          color="$iconSubdued"
+          position="absolute"
+          right="$3"
+          top={media.gtMd ? '$2' : '$3'}
         />
       </>
     ),
-    [testID],
+    [defaultTriggerInputProps, media.gtMd, testID],
   );
   return (
     <SelectFrame {...props}>
@@ -415,6 +442,7 @@ export const Select = withStaticProperties(BasicSelect, {
   Frame: SelectFrame,
   Trigger: SelectTrigger,
   Content: SelectContent,
+  Item: SelectItemView,
 });
 
 export * from './type';

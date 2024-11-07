@@ -1,7 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
 
-import platformEnv from '@onekeyhq/shared/src/platformEnv';
-
 import { Skeleton } from '../Skeleton';
 import { Stack } from '../Stack';
 
@@ -12,14 +10,18 @@ import type { IImageFallbackProps, IImageSkeletonProps } from './type';
 const useVisible = (delayMs: number) => {
   const [visible, setVisible] = useState(!(delayMs > 0));
   useEffect(() => {
+    let timerId: ReturnType<typeof setTimeout>;
     if (delayMs > 0) {
-      setTimeout(() => {
+      timerId = setTimeout(() => {
         setVisible(true);
       }, delayMs);
     }
+    return () => {
+      clearTimeout(timerId);
+    };
   }, [delayMs]);
-  const { loading, loadedSuccessfully } = useContext(ImageContext);
-  return (loading || !loadedSuccessfully) && visible;
+  const { loadedSuccessfully } = useContext(ImageContext);
+  return !loadedSuccessfully && visible;
 };
 export function ImageFallback({
   delayMs = 80,

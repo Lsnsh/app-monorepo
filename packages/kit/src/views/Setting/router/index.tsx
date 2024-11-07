@@ -20,9 +20,6 @@ const SettingAppAutoLockModal = LazyLoadPage(
 const SettingCurrencyModal = LazyLoadPage(
   () => import('@onekeyhq/kit/src/views/Setting/pages/Currency'),
 );
-const SettingHardwareSdkUrlModal = LazyLoadPage(
-  () => import('@onekeyhq/kit/src/views/Setting/pages/HardwareSdkUrl'),
-);
 const SettingListModal = LazyLoadPage(
   () => import('@onekeyhq/kit/src/views/Setting/pages/List'),
 );
@@ -32,6 +29,52 @@ const SettingProtectionModal = LazyLoadPage(
 const SettingSpendUTXOModal = LazyLoadPage(
   () => import('@onekeyhq/kit/src/views/Setting/pages/SpendUTXO'),
 );
+const SettingCustomRPCModal = LazyLoadPage(
+  () => import('@onekeyhq/kit/src/views/Setting/pages/CustomRPC'),
+);
+const SettingCustomNetworkModal = LazyLoadPage(
+  () => import('@onekeyhq/kit/src/views/Setting/pages/CustomNetwork'),
+);
+
+const SettingSignatureRecordModal = LazyLoadPage(
+  () => import('@onekeyhq/kit/src/views/Setting/pages/SignatureRecord'),
+);
+
+const FirmwareUpdateDevSettings = LazyLoadPage(
+  () =>
+    import('@onekeyhq/kit/src/views/Setting/pages/FirmwareUpdateDevSettings'),
+);
+
+const V4MigrationDevSettings = LazyLoadPage(
+  () => import('@onekeyhq/kit/src/views/Setting/pages/V4MigrationDevSettings'),
+);
+
+const ExportCustomNetworkConfig = LazyLoadPage(
+  () =>
+    import('@onekeyhq/kit/src/views/Setting/pages/ExportCustomNetworkConfig'),
+);
+
+const NotificationsSettings = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Setting/pages/Notifications/NotificationsSettings'
+    ),
+);
+
+const ManageAccountActivity = LazyLoadPage(
+  () =>
+    import(
+      '@onekeyhq/kit/src/views/Setting/pages/Notifications/ManageAccountActivity'
+    ),
+);
+
+const AlignPrimaryAccountModal = LazyLoadPage(
+  () => import('@onekeyhq/kit/src/views/Setting/pages/AlignPrimaryAccount'),
+);
+
+const CustomNonceModal = LazyLoadPage(
+  () => import('@onekeyhq/kit/src/views/Setting/pages/CustomNonce'),
+);
 
 export const ModalSettingStack: IModalFlowNavigatorConfig<
   EModalSettingRoutes | EModalAddressBookRoutes,
@@ -40,37 +83,66 @@ export const ModalSettingStack: IModalFlowNavigatorConfig<
   {
     name: EModalSettingRoutes.SettingListModal,
     component: SettingListModal,
-    translationId: 'title__settings',
   },
   {
     name: EModalSettingRoutes.SettingCurrencyModal,
     component: SettingCurrencyModal,
-    translationId: 'content__currency',
   },
   {
     name: EModalSettingRoutes.SettingSpendUTXOModal,
     component: SettingSpendUTXOModal,
-    translationId: 'form__spend_dust_utxo',
   },
   {
     name: EModalSettingRoutes.SettingAccountDerivationModal,
     component: SettingAccountDerivationModal,
-    translationId: 'form__theme',
   },
   {
-    name: EModalSettingRoutes.SettingHardwareSdkUrlModal,
-    component: SettingHardwareSdkUrlModal,
-    translationId: 'form__hardware_bridge_sdk_url',
+    name: EModalSettingRoutes.SettingCustomRPC,
+    component: SettingCustomRPCModal,
+  },
+  {
+    name: EModalSettingRoutes.SettingCustomNetwork,
+    component: SettingCustomNetworkModal,
   },
   {
     name: EModalSettingRoutes.SettingAppAutoLockModal,
     component: SettingAppAutoLockModal,
-    translationId: 'form__app_lock',
   },
   {
     name: EModalSettingRoutes.SettingProtectModal,
     component: SettingProtectionModal,
-    translationId: 'action__protection',
+  },
+  {
+    name: EModalSettingRoutes.SettingSignatureRecordModal,
+    component: SettingSignatureRecordModal,
+  },
+  {
+    name: EModalSettingRoutes.SettingDevFirmwareUpdateModal,
+    component: FirmwareUpdateDevSettings,
+  },
+  {
+    name: EModalSettingRoutes.SettingDevV4MigrationModal,
+    component: V4MigrationDevSettings,
+  },
+  {
+    name: EModalSettingRoutes.SettingExportCustomNetworkConfig,
+    component: ExportCustomNetworkConfig,
+  },
+  {
+    name: EModalSettingRoutes.SettingNotifications,
+    component: NotificationsSettings,
+  },
+  {
+    name: EModalSettingRoutes.SettingManageAccountActivity,
+    component: ManageAccountActivity,
+  },
+  {
+    name: EModalSettingRoutes.SettingAlignPrimaryAccount,
+    component: AlignPrimaryAccountModal,
+  },
+  {
+    name: EModalSettingRoutes.SettingCustomNonce,
+    component: CustomNonceModal,
   },
   ...(ModalAddressBookRouter as IModalFlowNavigatorConfig<
     EModalSettingRoutes | EModalAddressBookRoutes,

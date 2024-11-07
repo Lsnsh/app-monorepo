@@ -1,9 +1,9 @@
-import type { UnspentOutputInfo } from './sdkKaspa';
-import type { PrivateKey, PublicKey } from '@kaspa/core-lib';
+import type { IKaspaUnspentOutputInfo } from './sdkKaspa';
+import type { PrivateKey, PublicKey } from '@onekeyfe/kaspa-core-lib';
 
 export type IEncodedTxKaspa = {
   utxoIds: string[];
-  inputs: UnspentOutputInfo[];
+  inputs: IKaspaUnspentOutputInfo[];
   outputs: {
     address: string;
     value: string;
@@ -12,7 +12,7 @@ export type IEncodedTxKaspa = {
   hasMaxSend: boolean;
   // TODO IFeeInfoUnit
   feeInfo?: {
-    price: string;
+    price: string; // feerate
     limit: string;
   };
 };

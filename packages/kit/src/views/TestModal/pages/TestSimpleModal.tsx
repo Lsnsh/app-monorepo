@@ -86,7 +86,17 @@ export function TestSimpleModal() {
   console.log('render-------');
 
   return (
-    <Page>
+    <Page
+      onClose={(extra) => {
+        console.log(`onClose: ${extra?.flag || ''}`);
+      }}
+      onCancel={() => {
+        console.log('onCancel');
+      }}
+      onConfirm={() => {
+        console.log('onConfirm');
+      }}
+    >
       <Page.Header
         title="test modal"
         headerShown={showHeader}
@@ -132,7 +142,7 @@ export function TestSimpleModal() {
           </SizableText>
         </XStack>
         <SizableText>这是一个普通的 Modal 测试</SizableText>
-        <YStack space="$4" m="$4">
+        <YStack gap="$4" m="$4">
           <Button onPress={navigateToNextPage}>Push to Next Page</Button>
           <Page.Close>
             <Button>Back To Pervious Page</Button>
@@ -175,7 +185,7 @@ export function TestSimpleModal() {
         <Page.Footer
           onConfirm={(close) => {
             alert('confirmed');
-            close();
+            close({ flag: 'confirm button was clicked' });
           }}
           confirmButton={
             showConfirmAndCancelButton ? <CustomConfirmButton /> : undefined

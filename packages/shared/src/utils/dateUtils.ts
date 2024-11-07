@@ -3,20 +3,21 @@ import {
   formatDistanceStrict as fnsFormatDistanceStrict,
   formatDistanceToNow as fnsFormatDistanceToNow,
   formatDuration as fnsFormatDuration,
-  formatRelative,
+  intervalToDuration,
   isToday,
   isYesterday,
+  millisecondsToSeconds,
   parseISO,
 } from 'date-fns';
 
+import { ETranslations, type ILocaleSymbol } from '../locale';
 import { appLocale } from '../locale/appLocale';
 import { DateLocaleMap } from '../locale/dateLocaleMap';
 import { getDefaultLocale } from '../locale/getDefaultLocale';
 
-import type { ILocaleSymbol } from '../locale';
 import type { Duration } from 'date-fns';
 
-const parseLocal = (localeSymbol: ILocaleSymbol) => {
+export const parseToDateFnsLocale = (localeSymbol: ILocaleSymbol) => {
   let locale = localeSymbol;
   if (localeSymbol === 'system') {
     locale = getDefaultLocale();
@@ -35,6 +36,7 @@ export type IFormatDateOptions = {
   hideMonth?: boolean;
   hideTimeForever?: boolean;
   hideSeconds?: boolean;
+  formatTemplate?: string;
 };
 
 export type IFormatMonthOptions = {
@@ -42,7 +44,7 @@ export type IFormatMonthOptions = {
   hideYear?: boolean;
 };
 
-function format(date: Date | string, _format?: string) {
+export function formatDateFns(date: Date | string, _format?: string) {
   let parsedDate: Date;
   const locale = appLocale.getLocale();
   if (typeof date === 'string') {
@@ -52,7 +54,7 @@ function format(date: Date | string, _format?: string) {
   }
   try {
     return fnsFormat(parsedDate, _format ?? 'PPp', {
-      locale: parseLocal(locale),
+      locale: parseToDateFnsLocale(locale),
     });
   } catch (error) {
     return '-';
@@ -67,27 +69,35 @@ export function formatDate(date: Date | string, options?: IFormatDateOptions) {
     parsedDate = date;
   }
 
+  const locale = appLocale.getLocale();
+
+  let formatTemplate = 'yyyy/LL/dd, HH:mm:ss';
+
+  if (['de', 'es', 'en-US', 'fr-FR', 'it-IT', 'uk-UA'].includes(locale)) {
+    formatTemplate = 'LL/dd/yyyy, HH:mm:ss';
+  }
+
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
-  let formatTemplate = 'LLL dd yyyy, HH:mm:ss';
 
   if (
     (currentYear === parsedDate.getFullYear() && options?.hideTheYear) ||
     options?.hideYear
   ) {
-    formatTemplate = formatTemplate.replace(' yyyy', '');
+    formatTemplate = formatTemplate.replace('yyyy/', '');
+    formatTemplate = formatTemplate.replace('/yyyy', '');
   }
   if (
     (currentMonth === parsedDate.getMonth() && options?.hideTheMonth) ||
     options?.hideMonth
   ) {
-    formatTemplate = formatTemplate.replace('LLL ', '');
+    formatTemplate = formatTemplate.replace('LL/', '');
   }
   if (options?.hideTimeForever) {
     formatTemplate = formatTemplate.replace(', HH:mm:ss', '');
   }
 
-  return format(parsedDate, formatTemplate) ?? '';
+  return formatDateFns(parsedDate, formatTemplate) ?? '';
 }
 
 export function formatMonth(
@@ -106,9 +116,9 @@ export function formatMonth(
     (currentYear === parsedDate.getFullYear() && options?.hideTheYear) ||
     options?.hideYear
   ) {
-    return format(parsedDate, 'MMMM') ?? '';
+    return formatDateFns(parsedDate, 'MMMM') ?? '';
   }
-  return format(parsedDate, 'MMMM, yyyy') ?? '';
+  return formatDateFns(parsedDate, 'MMMM, yyyy') ?? '';
 }
 
 export function formatDistanceStrict(
@@ -117,7 +127,7 @@ export function formatDistanceStrict(
 ) {
   const locale = appLocale.getLocale();
   const distance = fnsFormatDistanceStrict(date, baseDate, {
-    locale: parseLocal(locale),
+    locale: parseToDateFnsLocale(locale),
   });
 
   return distance ?? '';
@@ -127,7 +137,7 @@ export function formatDistanceToNow(date: Date | number) {
   const locale = appLocale.getLocale();
   const distance = fnsFormatDistanceToNow(date, {
     addSuffix: true,
-    locale: parseLocal(locale),
+    locale: parseToDateFnsLocale(locale),
   });
 
   return distance ?? '';
@@ -136,7 +146,7 @@ export function formatDistanceToNow(date: Date | number) {
 export function formatDuration(duration: Duration) {
   const locale = appLocale.getLocale();
   const distance = fnsFormatDuration(duration, {
-    locale: parseLocal(locale),
+    locale: parseToDateFnsLocale(locale),
   });
 
   return distance ?? '';
@@ -145,9 +155,11 @@ export function formatDuration(duration: Duration) {
 export function formatRelativeDate(date: Date) {
   const formatRelativeLocale: Record<string, string> = {
     yesterday: `${appLocale.intl.formatMessage({
-      id: 'content__yesterday',
+      id: ETranslations.global_date_yesterday,
     })}`,
-    today: `${appLocale.intl.formatMessage({ id: 'content__today' })}`,
+    today: `${appLocale.intl.formatMessage({
+      id: ETranslations.global_date_today,
+    })}`,
     other: 'LLL dd yyyy',
   };
 
@@ -158,7 +170,7 @@ export function formatRelativeDate(date: Date) {
   } else if (isYesterday(date)) {
     formattedDate = formatRelativeLocale.yesterday;
   } else {
-    formattedDate = format(date, formatRelativeLocale.other);
+    formattedDate = formatDateFns(date, formatRelativeLocale.other);
   }
 
   return formattedDate;
@@ -172,11 +184,24 @@ export function formatTime(date: Date | string, options?: IFormatDateOptions) {
     parsedDate = date;
   }
 
-  let formatTemplate = 'HH:mm:ss';
+  let formatTemplate = options?.formatTemplate || 'HH:mm:ss';
 
   if (options?.hideSeconds) {
     formatTemplate = formatTemplate.replace('HH:mm:ss', 'HH:mm');
   }
 
-  return format(parsedDate, formatTemplate) ?? '';
+  return formatDateFns(parsedDate, formatTemplate) ?? '';
+}
+
+export function formatMillisecondsToDays(milliseconds: number): number {
+  const duration = intervalToDuration({ start: 0, end: milliseconds });
+  return duration.days ?? 0;
+}
+
+export function formatMillisecondsToBlocks(
+  milliseconds: number,
+  blockIntervalSeconds = 600,
+): number {
+  const seconds = millisecondsToSeconds(milliseconds);
+  return Math.ceil(seconds / blockIntervalSeconds);
 }

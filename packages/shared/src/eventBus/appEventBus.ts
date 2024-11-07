@@ -1,11 +1,24 @@
 /* eslint-disable import/no-named-as-default-member */
 import { CrossEventEmitter } from '@onekeyfe/cross-inpage-provider-core';
 
+import type { IQrcodeDrawType } from '@onekeyhq/components';
+import type { IDBAccount } from '@onekeyhq/kit-bg/src/dbs/local/types';
 import type { IAccountSelectorSelectedAccount } from '@onekeyhq/kit-bg/src/dbs/simple/entity/SimpleDbEntityAccountSelector';
+import type { IAccountDeriveTypes } from '@onekeyhq/kit-bg/src/vaults/types';
+import type { IAirGapUrJson } from '@onekeyhq/qr-wallet-sdk';
 
+import { defaultLogger } from '../logger/logger';
 import platformEnv from '../platformEnv';
 
-import type { EAccountSelectorSceneName } from '../../types';
+import type { EAccountSelectorSceneName, EHomeTab } from '../../types';
+import type { IFeeSelectorItem } from '../../types/fee';
+import type {
+  IFetchQuotesParams,
+  ISwapQuoteEvent,
+  ISwapToken,
+} from '../../types/swap/types';
+import type { IAccountToken, ITokenFiat } from '../../types/token';
+import type { IOneKeyError } from '../errors/types/errorTypes';
 
 export enum EFinalizeWalletSetupSteps {
   CreatingWallet = 'CreatingWallet',
@@ -14,22 +27,59 @@ export enum EFinalizeWalletSetupSteps {
   Ready = 'Ready',
 }
 export enum EAppEventBusNames {
+  ConfirmAccountSelected = 'ConfirmAccountSelected',
   WalletClear = 'WalletClear',
   WalletUpdate = 'WalletUpdate',
+  WalletRemove = 'WalletRemove',
+  WalletRename = 'WalletRename',
   AccountUpdate = 'AccountUpdate',
   AccountRemove = 'AccountRemove',
+  AddDBAccountsToWallet = 'AddDBAccountsToWallet',
+  RenameDBAccounts = 'RenameDBAccounts',
   CloseCurrentBrowserTab = 'CloseCurrentBrowserTab',
-  CloseAllBrowserTab = 'CloseAllBrowserTab',
   DAppConnectUpdate = 'DAppConnectUpdate',
+  OnSwitchDAppNetwork = 'OnSwitchDAppNetwork',
   DAppNetworkUpdate = 'DAppNetworkUpdate',
+  DAppLastFocusUrlUpdate = 'DAppLastFocusUrlUpdate',
   GlobalDeriveTypeUpdate = 'GlobalDeriveTypeUpdate',
   AccountSelectorSelectedAccountUpdate = 'AccountSelectorSelectedAccountUpdate',
   FinalizeWalletSetupStep = 'FinalizeWalletSetupStep',
+  FinalizeWalletSetupError = 'FinalizeWalletSetupError',
   WalletConnectOpenModal = 'WalletConnectOpenModal',
   WalletConnectCloseModal = 'WalletConnectCloseModal',
   WalletConnectModalState = 'WalletConnectModalState',
   ShowToast = 'ShowToast',
+  ShowAirGapQrcode = 'ShowAirGapQrcode',
+  HideAirGapQrcode = 'HideAirGapQrcode',
   RealmInit = 'RealmInit',
+  V4RealmInit = 'V4RealmInit',
+  SyncDeviceLabelToWalletName = 'SyncDeviceLabelToWalletName',
+  BatchCreateAccount = 'BatchCreateAccount',
+  ExtensionContextMenuUpdate = 'ExtensionContextMenuUpdate',
+  ShowFirmwareUpdateFromBootloaderMode = 'ShowFirmwareUpdateFromBootloaderMode',
+  ShowFirmwareUpdateForce = 'ShowFirmwareUpdateForce',
+  BeginFirmwareUpdate = 'BeginFirmwareUpdate', // notification begin hardware update, stop hardware progressing
+  LoadWebEmbedWebView = 'LoadWebEmbedWebView',
+  LoadWebEmbedWebViewComplete = 'LoadWebEmbedWebViewComplete',
+  HardwareVerifyAfterDeviceConfirm = 'HardwareVerifyAfterDeviceConfirm',
+  SwitchMarketHomeTab = 'SwitchMarketHomeTab',
+  ClearLocalHistoryPendingTxs = 'ClearLocalHistoryPendingTxs',
+  TxFeeInfoChanged = 'TxFeeInfoChanged',
+  SendConfirmContainerMounted = 'SendConfirmContainerMounted',
+  CloseHardwareUiStateDialogManually = 'CloseHardwareUiStateDialogManually',
+  HardCloseHardwareUiStateDialog = 'CloseHardwareUiStateDialog',
+  HistoryTxStatusChanged = 'HistoryTxStatusChanged',
+  EstimateTxFeeRetry = 'estimateTxFeeRetry',
+  TokenListUpdate = 'TokenListUpdate',
+  TabListStateUpdate = 'TabListStateUpdate',
+  RefreshTokenList = 'RefreshTokenList',
+  AccountDataUpdate = 'AccountDataUpdate',
+  onDragBeginInListView = 'onDragBeginInListView',
+  onDragEndInListView = 'onDragEndInListView',
+  SidePanel_BgToUI = 'SidePanel_BgToUI',
+  SidePanel_UIToBg = 'SidePanel_UIToBg',
+  SwapQuoteEvent = 'SwapQuoteEvent',
+  AddedCustomNetwork = 'AddedCustomNetwork',
   // AccountNameChanged = 'AccountNameChanged',
   // CurrencyChanged = 'CurrencyChanged',
   // BackupRequired = 'BackupRequired',
@@ -40,19 +90,36 @@ export enum EAppEventBusNames {
 }
 
 export interface IAppEventBusPayload {
+  [EAppEventBusNames.ConfirmAccountSelected]: undefined;
   [EAppEventBusNames.WalletClear]: undefined;
   [EAppEventBusNames.WalletUpdate]: undefined;
+  [EAppEventBusNames.WalletRemove]: {
+    walletId: string;
+  };
+  [EAppEventBusNames.WalletRename]: {
+    walletId: string;
+  };
   [EAppEventBusNames.AccountUpdate]: undefined;
   [EAppEventBusNames.AccountRemove]: undefined;
+  [EAppEventBusNames.AddDBAccountsToWallet]: {
+    walletId: string;
+    accounts: IDBAccount[];
+  };
+  [EAppEventBusNames.RenameDBAccounts]: {
+    accounts: IDBAccount[];
+  };
   [EAppEventBusNames.CloseCurrentBrowserTab]: undefined;
-  [EAppEventBusNames.CloseAllBrowserTab]: undefined;
   [EAppEventBusNames.DAppConnectUpdate]: undefined;
+  [EAppEventBusNames.DAppLastFocusUrlUpdate]: undefined;
   [EAppEventBusNames.GlobalDeriveTypeUpdate]: undefined;
   [EAppEventBusNames.AccountSelectorSelectedAccountUpdate]: {
     selectedAccount: IAccountSelectorSelectedAccount;
     sceneName: EAccountSelectorSceneName;
     sceneUrl?: string;
     num: number;
+  };
+  [EAppEventBusNames.OnSwitchDAppNetwork]: {
+    state: 'switching' | 'completed';
   };
   [EAppEventBusNames.DAppNetworkUpdate]: {
     networkId: string;
@@ -62,6 +129,9 @@ export interface IAppEventBusPayload {
   };
   [EAppEventBusNames.FinalizeWalletSetupStep]: {
     step: EFinalizeWalletSetupSteps;
+  };
+  [EAppEventBusNames.FinalizeWalletSetupError]: {
+    error: IOneKeyError | undefined;
   };
   [EAppEventBusNames.WalletConnectOpenModal]: {
     uri: string;
@@ -76,8 +146,102 @@ export interface IAppEventBusPayload {
     title: string;
     message?: string;
     duration?: number;
+    errorCode?: number;
+  };
+  [EAppEventBusNames.ShowAirGapQrcode]: {
+    title?: string;
+    drawType: IQrcodeDrawType;
+    promiseId?: number;
+    value?: string;
+    valueUr?: IAirGapUrJson;
+  };
+  [EAppEventBusNames.HideAirGapQrcode]: {
+    flag?: string; // close toast should skipReject: flag=skipReject
   };
   [EAppEventBusNames.RealmInit]: undefined;
+  [EAppEventBusNames.V4RealmInit]: undefined;
+  [EAppEventBusNames.SyncDeviceLabelToWalletName]: {
+    walletId: string;
+    dbDeviceId: string;
+    label: string;
+    walletName: string | undefined;
+  };
+  [EAppEventBusNames.BatchCreateAccount]: {
+    totalCount: number;
+    createdCount: number;
+    progressTotal: number;
+    progressCurrent: number;
+    networkId?: string;
+    deriveType?: string | IAccountDeriveTypes;
+    error?: IOneKeyError;
+  };
+  [EAppEventBusNames.ExtensionContextMenuUpdate]: undefined;
+  [EAppEventBusNames.ShowFirmwareUpdateFromBootloaderMode]: {
+    connectId: string | undefined;
+    existsFirmware?: boolean;
+  };
+  [EAppEventBusNames.ShowFirmwareUpdateForce]: {
+    connectId: string | undefined;
+  };
+  [EAppEventBusNames.BeginFirmwareUpdate]: undefined;
+  [EAppEventBusNames.LoadWebEmbedWebView]: undefined;
+  [EAppEventBusNames.LoadWebEmbedWebViewComplete]: undefined;
+  [EAppEventBusNames.HardwareVerifyAfterDeviceConfirm]: undefined;
+  [EAppEventBusNames.SwitchMarketHomeTab]: {
+    tabIndex: number;
+  };
+  [EAppEventBusNames.ClearLocalHistoryPendingTxs]: undefined;
+  [EAppEventBusNames.TxFeeInfoChanged]: {
+    feeSelectorItems: IFeeSelectorItem[];
+  };
+  [EAppEventBusNames.SendConfirmContainerMounted]: undefined;
+  [EAppEventBusNames.CloseHardwareUiStateDialogManually]: undefined;
+  [EAppEventBusNames.HardCloseHardwareUiStateDialog]: undefined;
+  [EAppEventBusNames.HistoryTxStatusChanged]: undefined;
+  [EAppEventBusNames.EstimateTxFeeRetry]: undefined;
+  [EAppEventBusNames.TokenListUpdate]: {
+    tokens: IAccountToken[];
+    keys: string;
+    map: Record<string, ITokenFiat>;
+    merge?: boolean;
+  };
+  [EAppEventBusNames.RefreshTokenList]:
+    | undefined
+    | {
+        accounts: {
+          accountId: string;
+          networkId: string;
+        }[];
+      };
+  [EAppEventBusNames.TabListStateUpdate]: {
+    isRefreshing: boolean;
+    type: EHomeTab;
+    accountId: string;
+    networkId: string;
+  };
+  [EAppEventBusNames.AccountDataUpdate]: undefined;
+  [EAppEventBusNames.onDragBeginInListView]: undefined;
+  [EAppEventBusNames.onDragEndInListView]: undefined;
+  [EAppEventBusNames.SidePanel_BgToUI]: {
+    type: 'pushModal';
+    payload: {
+      modalParams: any;
+    };
+  };
+  [EAppEventBusNames.SidePanel_UIToBg]: {
+    type: 'dappRejectId';
+    payload: {
+      rejectId: number | string;
+    };
+  };
+  [EAppEventBusNames.SwapQuoteEvent]: {
+    type: 'message' | 'done' | 'error' | 'close' | 'open';
+    event: ISwapQuoteEvent;
+    params: IFetchQuotesParams;
+    accountId?: string;
+    tokenPairs: { fromToken: ISwapToken; toToken: ISwapToken };
+  };
+  [EAppEventBusNames.AddedCustomNetwork]: undefined;
 }
 
 export enum EEventBusBroadcastMethodNames {
@@ -142,6 +306,9 @@ class AppEventBus extends CrossEventEmitter {
     payload: IAppEventBusPayload[T],
   ): boolean {
     if (this.shouldEmitToSelf) {
+      defaultLogger.app.eventBus.emitToSelf({
+        eventName: type,
+      });
       this.emitToSelf(type, payload);
     }
     void this.emitToRemote(type, payload);
@@ -210,7 +377,7 @@ class AppEventBus extends CrossEventEmitter {
 const appEventBus = new AppEventBus();
 
 if (process.env.NODE_ENV !== 'production') {
-  global.$$appEventBus = appEventBus;
+  globalThis.$$appEventBus = appEventBus;
 }
 
 export { appEventBus };

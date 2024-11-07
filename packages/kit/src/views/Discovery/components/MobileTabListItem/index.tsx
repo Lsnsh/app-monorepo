@@ -52,6 +52,11 @@ function MobileTabListItem({
         borderColor={isActive ? '$brand6' : '$transparent'}
         p="$0.5"
         borderCurve="continuous"
+        testID={
+          isActive
+            ? `tab-modal-active-item-${id}`
+            : `tab-modal-no-active-item-${id}`
+        }
       >
         <Group
           borderRadius="$2.5"
@@ -84,7 +89,9 @@ function MobileTabListItem({
                 numberOfLines={1}
                 mx="$2"
               >
-                {tab?.title || ''}
+                {(tab?.customTitle?.length ?? 0) > 0
+                  ? tab?.customTitle
+                  : tab?.title}
               </SizableText>
               <IconButton
                 variant="tertiary"

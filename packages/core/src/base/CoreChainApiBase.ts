@@ -1,11 +1,22 @@
 import { merge } from 'lodash';
 
-import { OneKeyInternalError } from '@onekeyhq/shared/src/errors';
+import type {
+  IGetDefaultPrivateKeyParams,
+  IGetDefaultPrivateKeyResult,
+} from '@onekeyhq/kit-bg/src/vaults/types';
+import {
+  NotImplemented,
+  OneKeyInternalError,
+} from '@onekeyhq/shared/src/errors';
 import bufferUtils from '@onekeyhq/shared/src/utils/bufferUtils';
+import type {
+  IXprvtValidation,
+  IXpubValidation,
+} from '@onekeyhq/shared/types/address';
 
 import {
   batchGetPrivateKeys,
-  batchGetPublicKeys,
+  batchGetPublicKeysAsync,
   decrypt,
   decryptImportedCredential,
   ed25519,
@@ -13,6 +24,7 @@ import {
   nistp256,
   secp256k1,
 } from '../secret';
+import { ECoreCredentialType } from '../types';
 import { slicePathTemplate } from '../utils';
 
 import { ChainSigner } from './ChainSigner';
@@ -25,11 +37,15 @@ import type {
   ICoreApiGetAddressQueryPublicKey,
   ICoreApiGetAddressesQueryHd,
   ICoreApiGetAddressesResult,
+  ICoreApiGetExportedSecretKey,
   ICoreApiGetPrivateKeysMapHdQuery,
   ICoreApiPrivateKeysMap,
   ICoreApiSignBasePayload,
   ICoreApiSignMsgPayload,
   ICoreApiSignTxPayload,
+  ICoreApiValidateXprvtParams,
+  ICoreApiValidateXpubParams,
+  ICoreCredentialsInfo,
   ICurveName,
   ISignedTxPro,
 } from '../types';
@@ -76,7 +92,7 @@ export abstract class CoreChainApiBase {
     let privateKey = privateKeys[accountPath];
 
     // account.path is prefixPath, but privateKeys return fullPath map
-    const firstRelPath = payload.account.relPaths?.[0];
+    const firstRelPath = payload?.relPaths?.[0];
     if (!privateKey && firstRelPath) {
       const fullPath = [accountPath, firstRelPath].join('/');
       privateKey = privateKeys[fullPath];
@@ -100,7 +116,7 @@ export abstract class CoreChainApiBase {
     payload: ICoreApiSignBasePayload;
     curve: ICurveName;
   }): Promise<ICoreApiPrivateKeysMap> {
-    const { credentials, account, password } = payload;
+    const { credentials, account, password, relPaths } = payload;
     let privateKeys: ICoreApiPrivateKeysMap = {};
     if (credentials.hd && credentials.imported) {
       throw new OneKeyInternalError(
@@ -108,12 +124,12 @@ export abstract class CoreChainApiBase {
       );
     }
     if (credentials.hd) {
-      const { relPaths } = account;
       privateKeys = await this.baseGetPrivateKeysHd({
         curve,
         account,
         hdCredential: credentials.hd,
         password,
+        // build account.relPaths by _getRelPathsToAddressByApi()
         relPaths,
       });
     }
@@ -197,13 +213,13 @@ export abstract class CoreChainApiBase {
         indexFormatted,
       );
     } else {
-      pubkeyInfos = batchGetPublicKeys(
-        curve,
+      pubkeyInfos = await batchGetPublicKeysAsync({
+        curveName: curve,
         hdCredential,
         password,
-        pathPrefix,
-        indexFormatted,
-      );
+        prefix: pathPrefix,
+        relPaths: indexFormatted,
+      });
     }
     const infos = isPrivateKeyMode ? pvtkeyInfos : pubkeyInfos;
     if (infos.length !== indexes.length) {
@@ -240,6 +256,51 @@ export abstract class CoreChainApiBase {
     return { addresses };
   }
 
+  baseGetCredentialsType({
+    credentials,
+  }: {
+    credentials: ICoreCredentialsInfo;
+  }) {
+    if (credentials.hd && credentials.imported) {
+      throw new OneKeyInternalError(
+        'getCredentialsType ERROR: hd and imported credentials can NOT both set.',
+      );
+    }
+    if (credentials.hd) {
+      return ECoreCredentialType.hd;
+    }
+    if (credentials.imported) {
+      return ECoreCredentialType.imported;
+    }
+    throw new OneKeyInternalError(
+      'getCredentialsType ERROR: no credentials found',
+    );
+  }
+
+  async baseGetDefaultPrivateKey(
+    params: IGetDefaultPrivateKeyParams,
+  ): Promise<IGetDefaultPrivateKeyResult> {
+    const privateKeysMap = await this.getPrivateKeys(params);
+    const [encryptedPrivateKey] = Object.values(privateKeysMap);
+    return {
+      privateKeyRaw: encryptedPrivateKey,
+    };
+  }
+
+  async validateXpub(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    params: ICoreApiValidateXpubParams,
+  ): Promise<IXpubValidation> {
+    throw new NotImplemented();
+  }
+
+  async validateXprvt(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    params: ICoreApiValidateXprvtParams,
+  ): Promise<IXprvtValidation> {
+    throw new NotImplemented();
+  }
+
   // ----------------------------------------------
 
   // TODO getPrivateKeyByCredential
@@ -265,4 +326,8 @@ export abstract class CoreChainApiBase {
   abstract getAddressFromPublic(
     query: ICoreApiGetAddressQueryPublicKey,
   ): Promise<ICoreApiGetAddressItem>;
+
+  abstract getExportedSecretKey(
+    query: ICoreApiGetExportedSecretKey,
+  ): Promise<string>;
 }

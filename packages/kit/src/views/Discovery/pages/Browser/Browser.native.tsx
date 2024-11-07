@@ -8,6 +8,7 @@ import {
   Page,
   Stack,
   XStack,
+  useMedia,
   useSafeAreaInsets,
 } from '@onekeyhq/components';
 import type { IPageNavigationProp } from '@onekeyhq/components/src/layouts/Navigation';
@@ -23,6 +24,7 @@ import {
   EDiscoveryModalRoutes,
   EModalRoutes,
 } from '@onekeyhq/shared/src/routes';
+import { useDebugComponentRemountLog } from '@onekeyhq/shared/src/utils/debugUtils';
 
 import CustomHeaderTitle from '../../components/CustomHeaderTitle';
 import { HandleRebuildBrowserData } from '../../components/HandleData/HandleRebuildBrowserTabData';
@@ -48,9 +50,13 @@ function MobileBrowser() {
   // const { tab } = useWebTabDataById(activeTabId ?? '');
   const navigation =
     useAppNavigation<IPageNavigationProp<IDiscoveryModalParamList>>();
-  const { handleScroll, toolbarAnimatedStyle } =
+  const { handleScroll, toolbarRef, toolbarAnimatedStyle } =
     useMobileBottomBarAnimation(activeTabId);
   useDAppNotifyChanges({ tabId: activeTabId });
+
+  useDebugComponentRemountLog({
+    name: 'MobileBrowser3864',
+  });
 
   const { displayHomePage } = useDisplayHomePageFlag();
 
@@ -76,13 +82,16 @@ function MobileBrowser() {
   }, []);
 
   const closeCurrentWebTab = useCallback(
-    async () => (activeTabId ? closeWebTab(activeTabId) : Promise.resolve()),
+    async () =>
+      activeTabId
+        ? closeWebTab({ tabId: activeTabId, entry: 'Menu' })
+        : Promise.resolve(),
     [activeTabId, closeWebTab],
   );
 
   const onCloseCurrentWebTabAndGoHomePage = useCallback(() => {
     if (activeTabId) {
-      closeWebTab(activeTabId);
+      closeWebTab({ tabId: activeTabId, entry: 'Menu' });
       setCurrentWebTab(null);
     }
     return Promise.resolve();
@@ -107,9 +116,11 @@ function MobileBrowser() {
     [tabs, handleScroll],
   );
 
+  const { gtMd } = useMedia();
+
   const handleSearchBarPress = useCallback(
     (url: string) => {
-      navigation.pushFullModal(EModalRoutes.DiscoveryModal, {
+      navigation.pushModal(EModalRoutes.DiscoveryModal, {
         screen: EDiscoveryModalRoutes.SearchModal,
         params: {
           url,
@@ -121,15 +132,15 @@ function MobileBrowser() {
     [navigation, activeTabId],
   );
 
-  const { top } = useSafeAreaInsets();
+  const { top, bottom } = useSafeAreaInsets();
 
   return (
-    <Page skipLoading={platformEnv.isNativeIOS}>
+    <Page fullPage>
       <Page.Header headerShown={false} />
       {/* custom header */}
       <XStack
         pt={top}
-        mx="$5"
+        px="$5"
         alignItems="center"
         my="$1"
         mt={platformEnv.isNativeAndroid ? '$3' : undefined}
@@ -143,27 +154,33 @@ function MobileBrowser() {
         <HeaderRightToolBar />
       </XStack>
       <Page.Body>
-        <Stack flex={1} zIndex={3}>
+        <Stack flex={1} zIndex={3} pb={gtMd ? bottom : 0}>
           <HandleRebuildBrowserData />
-          <Stack flex={1} display={displayHomePage ? 'flex' : 'none'}>
-            <DashboardContent onScroll={handleScroll} />
+          <Stack flex={1}>
+            {gtMd ? null : (
+              <Stack display={displayHomePage ? 'flex' : 'none'}>
+                <DashboardContent onScroll={handleScroll} />
+              </Stack>
+            )}
+            <Freeze freeze={displayHomePage}>{content}</Freeze>
           </Stack>
-          <Freeze freeze={displayHomePage}>{content}</Freeze>
-          <Freeze freeze={!displayBottomBar}>
-            <Animated.View
-              style={[
-                toolbarAnimatedStyle,
-                {
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                },
-              ]}
-            >
-              <MobileBrowserBottomBar id={activeTabId ?? ''} />
-            </Animated.View>
-          </Freeze>
+          {gtMd ? null : (
+            <Freeze freeze={!displayBottomBar}>
+              <Animated.View
+                ref={toolbarRef}
+                style={[
+                  toolbarAnimatedStyle,
+                  {
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                  },
+                ]}
+              >
+                <MobileBrowserBottomBar id={activeTabId ?? ''} />
+              </Animated.View>
+            </Freeze>
+          )}
         </Stack>
       </Page.Body>
     </Page>

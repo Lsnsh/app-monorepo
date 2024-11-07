@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>OneKey Wallet</string>
+	<string>OneKey</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -70,7 +70,7 @@
 		<string>armv7</string>
 	</array>
 	<key>UIRequiresFullScreen</key>
-	<false/>
+	<true/>
 	<key>UIStatusBarStyle</key>
 	<string>UIStatusBarStyleDefault</string>
 	<key>UISupportedInterfaceOrientations</key>
@@ -80,8 +80,6 @@
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
@@ -93,6 +91,22 @@
 		<string>A000000151000000</string>
 		<string>D156000132834001</string>
 		<string>D1560001328300424C4400006E666301</string>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>metamask</string>
+		<string>rainbow</string>
+		<string>safe</string>
+		<string>zerion</string>
+		<string>trust</string>
+		<string>tpoutside</string>
+		<string>imtokenv2</string>
+		<string>phantom</string>
+		<string>coinbase</string>
+		<string>fireblocks-wc</string>
+		<string>bitkeep</string>
+		<string>oneinch</string>
+		<string>itms-apps</string>
 	</array>
 </dict>
 </plist>

@@ -22,9 +22,6 @@ jobs:
         with:
           lfs: true
 
-      - name: Install Snapcraft
-        uses: samuelmeuli/action-snapcraft@v2
-
       - name: Dotenv Action
         id: dotenv
         uses: OneKeyHQ/actions/dotenv-action@main
@@ -107,7 +104,7 @@ jobs:
           echo ${{ secrets.DESKTOP_KEYS_SECRET }} | base64 -d > apps/desktop/sign.p12
 
       - name: Publish and Sign Static Linux / Macos / Windows Installer
-        if: ${{ (github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/onekey') }}
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/x') }}
         env:
           NODE_OPTIONS: '--max_old_space_size=8192'
           APPLEID: ${{ secrets.APPLEID }}
@@ -128,6 +125,13 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_LINK: './sign.p12'
         run: 'cd apps/desktop && yarn build'
+       
+      - name: Upload Artifacts latest.yml
+        uses: actions/upload-artifact@v3
+        with:
+          name: onekey-desktop-yml
+          path: |
+            ./apps/desktop/build-electron/*.yml
 
       - name: Upload Artifacts Mac
         uses: actions/upload-artifact@v3
@@ -157,17 +161,12 @@ jobs:
           path: |
             ./apps/desktop/build-electron/*
             !./apps/desktop/build-electron/win-unpacked
+            !./apps/desktop/build-electron/win-arm64-unpacked
             !./apps/desktop/build-electron/mac-arm64
             !./apps/desktop/build-electron/mac
             !./apps/desktop/build-electron/linux-unpacked
+            !./apps/desktop/build-electron/linux-arm64-unpacked
             !./apps/desktop/build-electron/builder-debug.yml
-
-      - name: Upload Artifacts to Snap Linux
-        if: ${{ github.event.workflow_run }}
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
-        run: |
-          snapcraft push ./apps/desktop/build-electron/*.snap --release edge
 
       - name: 'Notify to Slack'
         if: ${{ github.event.workflow_run }}

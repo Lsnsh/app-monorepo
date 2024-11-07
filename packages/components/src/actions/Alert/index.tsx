@@ -28,6 +28,8 @@ type IAlertActionProps = {
   onPrimaryPress?: () => void;
   secondary?: string;
   onSecondaryPress?: () => void;
+  isPrimaryLoading?: boolean;
+  isSecondaryLoading?: boolean;
 };
 
 const AlertContext = createStyledContext<{
@@ -38,7 +40,7 @@ const AlertContext = createStyledContext<{
   fullBleed: false,
 });
 
-type IAlertProps = {
+export type IAlertProps = {
   type?: IAlertType;
   fullBleed?: boolean;
   title?: string;
@@ -54,7 +56,7 @@ const AlertFrame = styled(XStack, {
   paddingHorizontal: '$4',
   paddingVertical: '$3.5',
   alignItems: 'center',
-  space: '$2',
+  gap: '$2',
   backgroundColor: '$bgSubdued',
   borderColor: '$borderSubdued',
   borderRadius: '$3',
@@ -134,8 +136,8 @@ export const Alert = AlertFrame.styleable<IAlertProps>((props, ref) => {
           </AlertIcon>
         </Stack>
       ) : null}
-      <YStack flex={1} space="$1">
-        {title ? <SizableText size="$bodyMd">{title}</SizableText> : null}
+      <YStack flex={1} gap="$1">
+        {title ? <SizableText size="$bodyMdMedium">{title}</SizableText> : null}
         {description ? (
           <SizableText size="$bodyMd" color="$textSubdued">
             {description}
@@ -143,8 +145,12 @@ export const Alert = AlertFrame.styleable<IAlertProps>((props, ref) => {
         ) : null}
       </YStack>
       {action ? (
-        <XStack space="$4" alignItems="center">
-          <Button size="small" onPress={action.onPrimaryPress}>
+        <XStack gap="$4" alignItems="center">
+          <Button
+            size="small"
+            onPress={action.onPrimaryPress}
+            loading={action.isPrimaryLoading}
+          >
             {action.primary}
           </Button>
           {action.secondary ? (
@@ -152,6 +158,7 @@ export const Alert = AlertFrame.styleable<IAlertProps>((props, ref) => {
               size="small"
               variant="tertiary"
               onPress={action.onSecondaryPress}
+              loading={action.isSecondaryLoading}
             >
               {action.secondary}
             </Button>

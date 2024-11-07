@@ -1,19 +1,19 @@
-import { memo, useCallback } from 'react';
+import { memo, useMemo } from 'react';
 
-import { XStack, useMedia } from '@onekeyhq/components';
-import type {
-  ESwapDirectionType,
-  ISwapNetwork,
-} from '@onekeyhq/shared/types/swap/types';
+import { useIntl } from 'react-intl';
+import { useWindowDimensions } from 'react-native';
+
+import { XStack } from '@onekeyhq/components';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import type { ISwapNetwork } from '@onekeyhq/shared/types/swap/types';
 
 import { NetworksFilterItem } from '../../../components/NetworksFilterItem';
 
 interface ISwapNetworkToggleGroupProps {
   networks: ISwapNetwork[];
+  disableNetworks?: string[];
+  disableMoreNetworks?: boolean;
   moreNetworksCount?: number;
-  type: ESwapDirectionType;
-  onlySupportSingleNetWork?: string;
-  isOnlySupportSingleNetWork?: () => boolean;
   onSelectNetwork: (network: ISwapNetwork) => void;
   selectedNetwork?: ISwapNetwork;
   onMoreNetwork: () => void;
@@ -22,54 +22,47 @@ interface ISwapNetworkToggleGroupProps {
 const SwapNetworkToggleGroup = ({
   networks,
   selectedNetwork,
-  onlySupportSingleNetWork,
-  type,
   onSelectNetwork,
+  disableMoreNetworks,
+  disableNetworks,
   moreNetworksCount,
   onMoreNetwork,
 }: ISwapNetworkToggleGroupProps) => {
-  const { md } = useMedia();
-  const getNetworkName = useCallback(
-    (networkId: string) => {
-      if (networkId === 'all') {
-        return md ? 'All' : 'All Networks';
-      }
-      return undefined;
-    },
-    [md],
+  const { width } = useWindowDimensions();
+  const intl = useIntl();
+  const isWiderScreen = width > 380;
+  const filteredNetworks = useMemo(
+    () => (isWiderScreen ? networks : networks.slice(0, 4)),
+    [networks, isWiderScreen],
   );
   return (
-    <XStack px="$5" pt="$1" pb="$3" space="$2">
-      {networks.map((network) => (
+    <XStack px="$5" pt="$1" pb="$3" gap="$2">
+      {filteredNetworks.map((network) => (
         <NetworksFilterItem
           key={network.networkId}
-          networkName={getNetworkName(network.networkId)}
+          disabled={Boolean(disableNetworks?.includes(network.networkId))}
           networkImageUri={network.logoURI}
           tooltipContent={
-            network.name ?? network.symbol ?? network.shortcode ?? 'Unknown'
+            network.isAllNetworks
+              ? intl.formatMessage({ id: ETranslations.global_all_networks })
+              : network.name
           }
-          disabled={
-            !!(
-              type === 'to' &&
-              onlySupportSingleNetWork &&
-              network.networkId !== onlySupportSingleNetWork
-            )
+          isSelected={network?.networkId === selectedNetwork?.networkId}
+          onPress={
+            disableNetworks?.includes(network.networkId)
+              ? undefined
+              : () => {
+                  onSelectNetwork(network);
+                }
           }
-          isSelected={
-            network?.networkId === selectedNetwork?.networkId ||
-            (!selectedNetwork && network.networkId === 'all')
-          }
-          onPress={() => {
-            onSelectNetwork(network);
-          }}
         />
       ))}
       {moreNetworksCount && moreNetworksCount > 0 ? (
         <NetworksFilterItem
+          disabled={disableMoreNetworks}
           networkName={`${moreNetworksCount}+`}
           flex={1}
-          onPress={onMoreNetwork}
-          disabled={!!(type === 'to' && onlySupportSingleNetWork)}
+          onPress={disableMoreNetworks ? undefined : onMoreNetwork}
         />
       ) : null}
     </XStack>

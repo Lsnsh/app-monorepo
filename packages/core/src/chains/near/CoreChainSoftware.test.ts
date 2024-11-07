@@ -1,5 +1,6 @@
 import { baseDecode } from 'borsh';
 
+import { NotImplemented } from '@onekeyhq/shared/src/errors';
 import bufferUtils from '@onekeyhq/shared/src/utils/bufferUtils';
 
 import coreTestsUtils from '../../../@tests/coreTestsUtils';
@@ -124,6 +125,6 @@ describe('NEAR Core tests', () => {
   it.skip('signMessage', async () => {
     // const coreApi = new CoreChainHd();
     // coreApi.signMessage
-    throw new Error('Method not implemented.');
+    throw new NotImplemented();
   });
 });

@@ -1,98 +1,98 @@
 import type { ICosmosCoin } from '../../types';
 
-export interface CosmosMsgOpts {
+export interface ICosmosMsgOpts {
   readonly send: {
-    readonly native: MsgOpt;
+    readonly native: ICosmosMsgOpt;
   };
-  readonly ibcTransfer: MsgOpt;
-  readonly delegate: MsgOpt;
-  readonly undelegate: MsgOpt;
-  readonly redelegate: MsgOpt;
+  readonly ibcTransfer: ICosmosMsgOpt;
+  readonly delegate: ICosmosMsgOpt;
+  readonly undelegate: ICosmosMsgOpt;
+  readonly redelegate: ICosmosMsgOpt;
   // The gas multiplication per rewards.
-  readonly withdrawRewards: MsgOpt;
-  readonly govVote: MsgOpt;
-  readonly executeWasm: MsgOpt;
+  readonly withdrawRewards: ICosmosMsgOpt;
+  readonly govVote: ICosmosMsgOpt;
+  readonly executeWasm: ICosmosMsgOpt;
 }
 
-export const defaultAminoMsgOpts: CosmosMsgOpts = {
+export const defaultAminoMsgOpts: ICosmosMsgOpts = {
   send: {
     native: {
       type: 'cosmos-sdk/MsgSend',
-      gas: 80000,
+      gas: 80_000,
     },
   },
   ibcTransfer: {
     type: 'cosmos-sdk/MsgTransfer',
-    gas: 450000,
+    gas: 450_000,
   },
   delegate: {
     type: 'cosmos-sdk/MsgDelegate',
-    gas: 250000,
+    gas: 250_000,
   },
   undelegate: {
     type: 'cosmos-sdk/MsgUndelegate',
-    gas: 250000,
+    gas: 250_000,
   },
   redelegate: {
     type: 'cosmos-sdk/MsgBeginRedelegate',
-    gas: 250000,
+    gas: 250_000,
   },
   // The gas multiplication per rewards.
   withdrawRewards: {
     type: 'cosmos-sdk/MsgWithdrawDelegationReward',
-    gas: 140000,
+    gas: 140_000,
   },
   govVote: {
     type: 'cosmos-sdk/MsgVote',
-    gas: 250000,
+    gas: 250_000,
   },
   executeWasm: {
     type: 'wasm/MsgExecuteContract',
-    gas: 250000,
+    gas: 250_000,
   },
 };
 
-export interface MsgOpt {
+export interface ICosmosMsgOpt {
   readonly type: string;
   readonly gas: number;
 }
 
-export interface StdMsg {
+export interface ICosmosStdMsg {
   type: string;
   value: any;
 }
 
-export interface StdPublickey {
+export interface ICosmosStdPublickey {
   readonly type: string;
   readonly value: any;
 }
 
-export interface StdFee {
+export interface ICosmosStdFee {
   amount: ICosmosCoin[];
   gas: string;
 }
 
-export interface StdSignature {
-  readonly pub_key: StdPublickey;
+export interface ICosmosStdSignature {
+  readonly pub_key: ICosmosStdPublickey;
   readonly signature: string;
 }
 
-export interface StdSignDoc {
+export interface ICosmosStdSignDoc {
   readonly chain_id: string;
   readonly account_number: string;
   readonly sequence: string;
-  fee: StdFee;
-  readonly msgs: StdMsg[];
+  fee: ICosmosStdFee;
+  readonly msgs: ICosmosStdMsg[];
   readonly memo: string;
 }
 
-export interface AminoSignTx extends StdSignDoc {
-  readonly signatures: StdSignature[];
+export interface ICosmosAminoSignTx extends ICosmosStdSignDoc {
+  readonly signatures: ICosmosStdSignature[];
 }
 
-export interface StdTx {
-  readonly msg: readonly StdMsg[];
-  readonly fee: StdFee;
-  readonly signatures: readonly StdSignature[];
+export interface ICosmosStdTx {
+  readonly msg: readonly ICosmosStdMsg[];
+  readonly fee: ICosmosStdFee;
+  readonly signatures: readonly ICosmosStdSignature[];
   readonly memo: string | undefined;
 }

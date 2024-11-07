@@ -1,95 +1,69 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
+import BigNumber from 'bignumber.js';
+import * as BitcoinJS from 'bitcoinjs-lib';
+
 import {
   checkBtcAddressIsUsed,
   getBtcForkNetwork,
+  isTaprootPath,
 } from '@onekeyhq/core/src/chains/btc/sdkBtc';
+import type {
+  IBtcInput,
+  IBtcOutput,
+  IEncodedTxBtc,
+} from '@onekeyhq/core/src/chains/btc/types';
 import coreChainApi from '@onekeyhq/core/src/instance/coreChainApi';
 import type {
   ICoreApiGetAddressItem,
+  ISignedMessagePro,
   ISignedTxPro,
 } from '@onekeyhq/core/src/types';
+import { AddressNotSupportSignMethodError } from '@onekeyhq/shared/src/errors';
+import {
+  convertDeviceError,
+  convertDeviceResponse,
+} from '@onekeyhq/shared/src/errors/utils/deviceErrorUtils';
+import { CoreSDKLoader } from '@onekeyhq/shared/src/hardware/instance';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
+import accountUtils from '@onekeyhq/shared/src/utils/accountUtils';
+import { checkIsDefined } from '@onekeyhq/shared/src/utils/assertUtils';
+import bufferUtils from '@onekeyhq/shared/src/utils/bufferUtils';
 
 import { KeyringHardwareBase } from '../../base/KeyringHardwareBase';
 
-import type { IDBAccount } from '../../../dbs/local/types';
-import type { IPrepareHardwareAccountsParams } from '../../types';
+import { KeyringHardwareBtcBase } from './KeyringHardwareBtcBase';
 
-export class KeyringHardware extends KeyringHardwareBase {
+import type VaultBtc from './Vault';
+import type { IDBAccount, IDBUtxoAccount } from '../../../dbs/local/types';
+import type {
+  IBuildHwAllNetworkPrepareAccountsParams,
+  IHwSdkNetwork,
+  IPrepareHardwareAccountsParams,
+  ISignMessageParams,
+  ISignTransactionParams,
+} from '../../types';
+import type {
+  AllNetworkAddressParams,
+  RefTransaction,
+} from '@onekeyfe/hd-core';
+import type { Messages } from '@onekeyfe/hd-transport';
+
+export class KeyringHardware extends KeyringHardwareBtcBase {
   override coreApi = coreChainApi.btc.hd;
 
-  async signTransaction(): Promise<ISignedTxPro> {
-    throw new Error('Method not implemented.');
-  }
+  override hwSdkNetwork: IHwSdkNetwork = 'btc';
 
-  async signMessage(): Promise<string[]> {
-    throw new Error('Method not implemented.');
-  }
-
-  override async prepareAccounts(
-    params: IPrepareHardwareAccountsParams,
-  ): Promise<IDBAccount[]> {
-    const networkInfo = await this.getCoreApiNetworkInfo();
-    const network = getBtcForkNetwork(networkInfo.networkChainCode);
-    const addressEncoding = params.deriveInfo?.addressEncoding;
-
-    return this.basePrepareHdUtxoAccounts(params, {
-      checkIsAccountUsed: checkBtcAddressIsUsed,
-      buildAddressesInfo: async ({ usedIndexes }) => {
-        const isChange = false;
-        const addressIndex = 0;
-
-        const publicKeys = await this.baseGetDeviceAccountPublicKeys({
-          params,
-          usedIndexes,
-          sdkGetPublicKeysFn: async ({
-            connectId,
-            deviceId,
-            pathPrefix,
-            coinName,
-            showOnOnekeyFn,
-          }) => {
-            const sdk = await this.getHardwareSDKInstance();
-            const response = await sdk.btcGetPublicKey(connectId, deviceId, {
-              ...params.deviceParams.deviceCommonParams, // passpharse params
-              bundle: usedIndexes.map((index, arrIndex) => ({
-                path: `${pathPrefix}/${index}'`,
-                coin: coinName?.toLowerCase(),
-                showOnOneKey: showOnOnekeyFn(arrIndex),
-              })),
-            });
-            return response;
-          },
-        });
-
-        const ret: ICoreApiGetAddressItem[] = [];
-        for (let i = 0; i < publicKeys.length; i += 1) {
-          const item = publicKeys[i];
-          const { path, xpub, xpubSegwit } = item;
-          const addressRelPath = `${isChange ? '1' : '0'}/${addressIndex}`;
-          const { addresses: addressFromXpub } =
-            await this.coreApi.getAddressFromXpub({
-              network,
-              xpub,
-              relativePaths: [addressRelPath],
-              addressEncoding,
-            });
-          const { [addressRelPath]: address } = addressFromXpub;
-          const addressInfo: ICoreApiGetAddressItem = {
-            address,
-            publicKey: '', // TODO return pub from getAddressFromXpub
-            path,
-            relPath: addressRelPath,
-            xpub,
-            xpubSegwit,
-            addresses: {
-              [addressRelPath]: address,
-            },
-          };
-          ret.push(addressInfo);
-        }
-        return ret;
-      },
-    });
+  override async buildHwAllNetworkPrepareAccountsParams({
+    template,
+    index,
+  }: IBuildHwAllNetworkPrepareAccountsParams): Promise<
+    AllNetworkAddressParams | undefined
+  > {
+    return {
+      network: this.hwSdkNetwork,
+      path: this.buildPrepareAccountsPrefixedPath({ template, index }),
+      showOnOneKey: false,
+    };
   }
 }

@@ -29,7 +29,7 @@ export const { atom: sendSelectedFeeAtom, use: useSendSelectedFeeAtom } =
     presetIndex: number;
   }>({
     feeType: EFeeType.Standard,
-    presetIndex: 1,
+    presetIndex: 0,
   });
 
 export const { atom: customFeeAtom, use: useCustomFeeAtom } = contextAtom<
@@ -39,7 +39,17 @@ export const { atom: customFeeAtom, use: useCustomFeeAtom } = contextAtom<
 export const {
   atom: sendSelectedFeeInfoAtom,
   use: useSendSelectedFeeInfoAtom,
-} = contextAtom<ISendSelectedFeeInfo | undefined>(undefined);
+} = contextAtom<
+  | {
+      feeInfos: ISendSelectedFeeInfo[];
+      total: string;
+      totalNative: string;
+      totalFiat: string;
+      totalNativeForDisplay: string;
+      totalFiatForDisplay: string;
+    }
+  | undefined
+>(undefined);
 
 export const { atom: sendFeeStatusAtom, use: useSendFeeStatusAtom } =
   contextAtom<{
@@ -70,14 +80,46 @@ export const { atom: nativeTokenInfoAtom, use: useNativeTokenInfoAtom } =
   contextAtom<{
     isLoading: boolean;
     balance: string;
+    logoURI: string;
   }>({
     isLoading: false,
     balance: '0',
+    logoURI: '',
   });
 
 export const { atom: sendTxStatusAtom, use: useSendTxStatusAtom } =
   contextAtom<{
     isInsufficientNativeBalance?: boolean;
+    isSubmitting?: boolean;
   }>({
     isInsufficientNativeBalance: false,
+    isSubmitting: false,
+  });
+
+export const { atom: preCheckTxStatusAtom, use: usePreCheckTxStatusAtom } =
+  contextAtom<{
+    errorMessage?: string;
+  }>({
+    errorMessage: '',
+  });
+
+export const { atom: isSinglePresetAtom, use: useIsSinglePresetAtom } =
+  contextAtom<boolean>(true);
+
+export const { atom: tokenApproveInfoAtom, use: useTokenApproveInfoAtom } =
+  contextAtom<{
+    allowance: string;
+    isUnlimited: boolean;
+  }>({
+    allowance: '',
+    isUnlimited: false,
+  });
+
+export const { atom: txAdvancedSettingsAtom, use: useTxAdvancedSettingsAtom } =
+  contextAtom<{
+    nonce: string;
+    dataChanged: boolean;
+  }>({
+    nonce: '',
+    dataChanged: false,
   });

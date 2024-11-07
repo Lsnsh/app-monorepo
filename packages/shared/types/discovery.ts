@@ -18,6 +18,11 @@ export interface ICategory {
   categoryId: string;
   name: string;
   dapps: IDApp[];
+  dappInfo?: {
+    information?: string;
+    link?: string;
+    showLink?: boolean;
+  };
 }
 
 export interface IDApp {
@@ -30,6 +35,7 @@ export interface IDApp {
   networkIds: string[];
   categories: ICategory[];
   tags: IDAppTag[];
+  keyword?: string;
 }
 
 export interface IDAppTag {

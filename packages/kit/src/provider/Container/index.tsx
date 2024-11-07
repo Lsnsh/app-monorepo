@@ -1,77 +1,87 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect } from 'react';
 
 import { RootSiblingParent } from 'react-native-root-siblings';
 
-import { Page, Toast } from '@onekeyhq/components';
-import type { IAppEventBusPayload } from '@onekeyhq/shared/src/eventBus/appEventBus';
-import {
-  EAppEventBusNames,
-  appEventBus,
-} from '@onekeyhq/shared/src/eventBus/appEventBus';
-import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import LazyLoad from '@onekeyhq/shared/src/lazyLoad';
+import type { IJPushRemotePushMessageInfo } from '@onekeyhq/shared/types/notification';
 
-import { WalletConnectModalContainer } from '../../components/WalletConnect/WalletConnectModalContainer';
+import backgroundApiProxy from '../../background/instance/backgroundApiProxy';
+import useAppNavigation from '../../hooks/useAppNavigation';
 import { JotaiContextRootProvidersAutoMount } from '../../states/jotai/utils/JotaiContextStoreMirrorTracker';
+import { Bootstrap } from '../Bootstrap';
 
+import { AirGapQrcodeDialogContainer } from './AirGapQrcodeDialogContainer';
 import { AppStateLockContainer } from './AppStateLockContainer';
+import { CloudBackupContainer } from './CloudBackupContainer';
+import { ErrorToastContainer } from './ErrorToastContainer';
+import { FlipperPluginsContainer } from './FlipperPluginsContainer';
+import { ForceFirmwareUpdateContainer } from './ForceFirmwareUpdateContainer';
 import { FullWindowOverlayContainer } from './FullWindowOverlayContainer';
+import { GlobalWalletConnectModalContainer } from './GlobalWalletConnectModalContainer';
 import { HardwareUiStateContainer } from './HardwareUiStateContainer';
 import { KeyboardContainer } from './KeyboardContainer';
 import { NavigationContainer } from './NavigationContainer';
 import { PortalBodyContainer } from './PortalBodyContainer';
 
-function ErrorToastContainer() {
-  useEffect(() => {
-    const fn = (p: IAppEventBusPayload[EAppEventBusNames.ShowToast]) => {
-      Toast[p.method](p);
-    };
-    appEventBus.on(EAppEventBusNames.ShowToast, fn);
-    return () => {
-      appEventBus.off(EAppEventBusNames.ShowToast, fn);
-    };
-  }, []);
+const PageTrackerContainer = LazyLoad(
+  () => import('./PageTrackerContainer'),
+  100,
+);
 
+function GlobalRootAppNavigationUpdate() {
+  const navigation = useAppNavigation();
+  globalThis.$rootAppNavigation = navigation;
   return null;
 }
 
-function FlipperPluginsContainer() {
-  console.log('FlipperPluginsContainer render');
-  const [realmReady, setRealmReady] = useState(false);
+export function ColdStartByNotification() {
   useEffect(() => {
-    const fn = () => {
-      console.log('FlipperPluginsContainer realm ready');
-      setRealmReady(true);
-    };
-    if (global.$$realm) {
-      fn();
-    }
-    appEventBus.on(EAppEventBusNames.RealmInit, fn);
-    return () => {
-      appEventBus.off(EAppEventBusNames.RealmInit, fn);
-    };
-  }, []);
-  const realmPlugin = useMemo(() => {
-    if (process.env.NODE_ENV !== 'production') {
-      if (realmReady && global.$$realm && platformEnv.isNative) {
-        console.log('FlipperPluginsContainer render realm plugin');
-        const RealmFlipperPlugin = (
-          require('@onekeyhq/shared/src/modules3rdParty/realm-flipper-plugin-device') as typeof import('@onekeyhq/shared/src/modules3rdParty/realm-flipper-plugin-device')
-        ).default;
-        return <RealmFlipperPlugin realms={[global.$$realm]} />;
-      }
-    }
-    return null;
-  }, [realmReady]);
-  return <>{realmPlugin}</>;
-}
+    const options: IJPushRemotePushMessageInfo | null =
+      ColdStartByNotification.launchNotification as IJPushRemotePushMessageInfo | null;
+    if (options) {
+      console.log(
+        'coldStart ColdStartByNotification launchNotification',
+        options,
+      );
+      options.msgId =
+        options?.params?.msgId ||
+        options?.msgId ||
+        options?._j_msgid?.toString() ||
+        '';
+      console.log(
+        'coldStart ColdStartByNotification launchNotification FIXED',
+        options,
+      );
+      const title = options.aps?.alert?.title || '';
+      const content = options.aps?.alert?.body || '';
+      const icon = options?.image;
+      const badge = options.aps?.badge?.toString() || '';
 
-const renderWalletConnectModalContainer = platformEnv.isNativeIOS ? (
-  <Page.Every>
-    <WalletConnectModalContainer />
-  </Page.Every>
-) : (
-  <WalletConnectModalContainer />
-);
+      void backgroundApiProxy.serviceNotification.handleColdStartByNotification(
+        {
+          notificationId: options.msgId,
+          params: {
+            notificationId: options.msgId,
+            title,
+            description: content,
+            icon,
+            remotePushMessageInfo: {
+              pushSource: 'jpush',
+              title,
+              content,
+              badge,
+              extras: {
+                ...options,
+              },
+            },
+          },
+        },
+      );
+    }
+  }, []);
+  return null;
+}
+ColdStartByNotification.launchNotification = null;
 
 export function Container() {
   return (
@@ -79,18 +89,25 @@ export function Container() {
       <AppStateLockContainer>
         <KeyboardContainer />
         <NavigationContainer>
+          <GlobalRootAppNavigationUpdate />
           <JotaiContextRootProvidersAutoMount />
+          <Bootstrap />
+          <AirGapQrcodeDialogContainer />
           <HardwareUiStateContainer />
+          <CloudBackupContainer />
           <FullWindowOverlayContainer />
           <PortalBodyContainer />
+          <PageTrackerContainer />
           <ErrorToastContainer />
+          <ForceFirmwareUpdateContainer />
           {process.env.NODE_ENV !== 'production' ? (
             <>
               <FlipperPluginsContainer />
             </>
           ) : null}
+          <ColdStartByNotification />
         </NavigationContainer>
-        {renderWalletConnectModalContainer}
+        <GlobalWalletConnectModalContainer />
       </AppStateLockContainer>
     </RootSiblingParent>
   );

@@ -1,6 +1,4 @@
-import { useMemo } from 'react';
-
-import { BigNumber } from 'bignumber.js';
+import { useIntl } from 'react-intl';
 
 import {
   Badge,
@@ -11,47 +9,34 @@ import {
   Stack,
   XStack,
 } from '@onekeyhq/components';
-import { numberFormat } from '@onekeyhq/shared/src/utils/numberUtils';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type { ISwapToken } from '@onekeyhq/shared/types/swap/types';
 
 interface ISwapProviderInfoItemProps {
-  rate?: string;
   fromToken?: ISwapToken;
+  isBest?: boolean;
   toToken?: ISwapToken;
   providerIcon: string;
+  providerName: string;
   showLock?: boolean;
-  showBest?: boolean;
   onPress?: () => void;
   isLoading?: boolean;
 }
 const SwapProviderInfoItem = ({
-  showBest,
-  rate,
   fromToken,
+  isBest,
   toToken,
   providerIcon,
+  providerName,
   showLock,
   onPress,
   isLoading,
 }: ISwapProviderInfoItemProps) => {
-  const rateIsExit = useMemo(() => {
-    const rateBN = new BigNumber(rate ?? 0);
-    return !rateBN.isZero();
-  }, [rate]);
-  const rateContent = useMemo(() => {
-    if (!rateIsExit || !fromToken || !toToken) return '-';
-    const rateBN = new BigNumber(rate ?? 0);
-    const formatRate = numberFormat(rateBN.toFixed(), {
-      formatter: 'balance',
-    });
-    return `1 ${fromToken.symbol.toUpperCase()} = ${
-      formatRate as string
-    } ${toToken.symbol.toUpperCase()}`;
-  }, [fromToken, rate, rateIsExit, toToken]);
+  const intl = useIntl();
   return (
     <XStack justifyContent="space-between" alignItems="center">
-      <SizableText size="$bodyMd" color="$textSubdued">
-        Provider
+      <SizableText size="$bodyMd" color="$textSubdued" userSelect="none">
+        {intl.formatMessage({ id: ETranslations.swap_page_provider_provider })}
       </SizableText>
 
       {isLoading ? (
@@ -66,21 +51,28 @@ const SwapProviderInfoItem = ({
             opacity: 0.5,
           }}
           onPress={onPress}
+          cursor={onPress ? 'pointer' : undefined}
         >
-          {showBest ? (
-            <Badge badgeType="success" badgeSize="sm" mr="$1">
-              Best
-            </Badge>
-          ) : null}
-          <Image
-            source={{ uri: providerIcon }}
-            w="$5"
-            h="$5"
-            borderRadius="$1"
-          />
-          <SizableText size="$bodyMdMedium" pl="$1">
-            {rateContent}
-          </SizableText>
+          {!providerIcon || !fromToken || !toToken ? null : (
+            <>
+              {isBest ? (
+                <Badge badgeSize="sm" badgeType="success" marginRight="$2">
+                  {intl.formatMessage({
+                    id: ETranslations.global_best,
+                  })}
+                </Badge>
+              ) : null}
+              <Image
+                source={{ uri: providerIcon }}
+                w="$5"
+                h="$5"
+                borderRadius="$1"
+              />
+              <SizableText size="$bodyMdMedium" ml="$1">
+                {providerName ?? ''}
+              </SizableText>
+            </>
+          )}
           {showLock ? (
             <Icon name="LockOutline" color="$iconSubdued" ml="$1" size="$5" />
           ) : null}

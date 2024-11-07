@@ -9,7 +9,7 @@ export function ChainSelectorTrigger() {
 
   const handleChainPress = () => {
     navigation.pushModal(EModalRoutes.ChainSelectorModal, {
-      screen: EChainSelectorPages.ChainSelector,
+      screen: EChainSelectorPages.AccountChainSelector,
     });
   };
 
@@ -26,7 +26,7 @@ export function ChainSelectorTrigger() {
       }}
       title="Ethereum"
       onPress={handleChainPress}
-      focusStyle={{
+      focusVisibleStyle={{
         outlineOffset: 0,
         outlineWidth: 2,
         outlineStyle: 'solid',

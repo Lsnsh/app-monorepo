@@ -1,20 +1,32 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useMemo } from 'react';
 
-import { Icon, Image, Select, SizableText, XStack } from '@onekeyhq/components';
+import { useIntl } from 'react-intl';
+
+import {
+  Icon,
+  NATIVE_HIT_SLOP,
+  Select,
+  SizableText,
+  Tooltip,
+  XStack,
+} from '@onekeyhq/components';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { EShortcutEvents } from '@onekeyhq/shared/src/shortcuts/shortcuts.enum';
 import { useDebugComponentRemountLog } from '@onekeyhq/shared/src/utils/debugUtils';
 
 import backgroundApiProxy from '../../../background/instance/backgroundApiProxy';
-import useAppNavigation from '../../../hooks/useAppNavigation';
 import { usePromiseResult } from '../../../hooks/usePromiseResult';
+import { useShortcutsOnRouteFocused } from '../../../hooks/useShortcutsOnRouteFocused';
 import {
   useAccountSelectorActions,
-  useAccountSelectorSceneInfo,
   useAccountSelectorStorageReadyAtom,
-  useActiveAccount,
   useSelectedAccount,
 } from '../../../states/jotai/contexts/accountSelector';
 import { ChainSelectorInput } from '../../ChainSelectorInput';
-import { useAccountSelectorAvailableNetworks } from '../hooks/useAccountSelectorAvailableNetworks';
+import { NetworkAvatar } from '../../NetworkAvatar';
+import { useNetworkSelectorTrigger } from '../hooks/useNetworkSelectorTrigger';
+
+import type { IChainSelectorInputProps } from '../../ChainSelectorInput';
 
 function useNetworkSelectorItems() {
   const { serviceNetwork } = backgroundApiProxy;
@@ -75,107 +87,102 @@ export const NetworkSelectorTriggerLegacy = memo(
 function NetworkSelectorTriggerHomeCmp({ num }: { num: number }) {
   const {
     activeAccount: { network },
-  } = useActiveAccount({ num });
-  const actions = useAccountSelectorActions();
-  const { sceneName, sceneUrl } = useAccountSelectorSceneInfo();
-  const { networkIds, defaultNetworkId } = useAccountSelectorAvailableNetworks({
-    num,
-  });
+    showChainSelector,
+  } = useNetworkSelectorTrigger({ num });
+
+  const intl = useIntl();
 
   useDebugComponentRemountLog({ name: 'NetworkSelectorTriggerHome' });
 
-  const navigation = useAppNavigation();
+  useShortcutsOnRouteFocused(
+    EShortcutEvents.NetworkSelector,
+    showChainSelector,
+  );
 
-  const handleChainPress = useCallback(() => {
-    actions.current.showChainSelector({
-      navigation,
-      num,
-      sceneName,
-      sceneUrl,
-      networkIds,
-      defaultNetworkId,
-    });
-  }, [
-    actions,
-    defaultNetworkId,
-    navigation,
-    networkIds,
-    num,
-    sceneName,
-    sceneUrl,
-  ]);
-
-  return (
-    <XStack
-      role="button"
-      flexShrink={1}
-      alignItems="center"
-      p="$1"
-      m="$-1"
-      borderRadius="$2"
-      hoverStyle={{
-        bg: '$bgHover',
-      }}
-      pressStyle={{
-        bg: '$bgActive',
-      }}
-      focusable
-      focusStyle={{
-        outlineWidth: 2,
-        outlineColor: '$focusRing',
-        outlineStyle: 'solid',
-      }}
-      $platform-native={{
-        hitSlop: {
-          top: 8,
-          bottom: 8,
-          left: 8,
-        },
-      }}
-      userSelect="none"
-      onPress={handleChainPress}
-    >
-      {/* TODO NetworkAvatar component */}
-      <Image
-        w="$5"
-        h="$5"
-        source={{
-          uri: network?.logoURI ? network?.logoURI : '',
+  const trigger = useMemo(
+    () => (
+      <XStack
+        testID="account-network-trigger-button"
+        role="button"
+        flexShrink={1}
+        alignItems="center"
+        p="$1"
+        m="$-1"
+        borderRadius="$2"
+        hoverStyle={{
+          bg: '$bgHover',
         }}
-      />
-      <SizableText pl="$2" size="$bodyMd" flexShrink={1} numberOfLines={1}>
-        {network?.name}
-      </SizableText>
-      <Icon
-        name="ChevronDownSmallOutline"
-        color="$iconSubdued"
-        size="$5"
-        flexShrink={0}
-      />
-    </XStack>
+        pressStyle={{
+          bg: '$bgActive',
+        }}
+        focusable
+        focusVisibleStyle={{
+          outlineWidth: 2,
+          outlineColor: '$focusRing',
+          outlineStyle: 'solid',
+        }}
+        hitSlop={NATIVE_HIT_SLOP}
+        userSelect="none"
+        onPress={showChainSelector}
+      >
+        <NetworkAvatar networkId={network?.id} size="$5" />
+        <SizableText
+          testID="account-network-trigger-button-text"
+          pl="$2"
+          size="$bodyMd"
+          flexShrink={1}
+          numberOfLines={1}
+        >
+          {network?.isAllNetworks
+            ? intl.formatMessage({ id: ETranslations.global_all_networks })
+            : network?.name}
+        </SizableText>
+        <Icon
+          name="ChevronDownSmallOutline"
+          color="$iconSubdued"
+          size="$5"
+          flexShrink={0}
+        />
+      </XStack>
+    ),
+    [
+      intl,
+      network?.id,
+      network?.isAllNetworks,
+      network?.name,
+      showChainSelector,
+    ],
+  );
+  return (
+    <Tooltip
+      shortcutKey={EShortcutEvents.NetworkSelector}
+      renderTrigger={trigger}
+      renderContent={intl.formatMessage({ id: ETranslations.global_network })}
+      placement="bottom"
+    />
   );
 }
 export const NetworkSelectorTriggerHome = memo(NetworkSelectorTriggerHomeCmp);
 
 export function ControlledNetworkSelectorTrigger({
-  value,
-  onChange,
-}: {
-  value?: string;
-  onChange?: (networkId: string) => void;
+  forceDisabled,
+  disabled,
+  networkIds,
+  ...rest
+}: IChainSelectorInputProps & {
+  forceDisabled?: boolean;
+  disabled?: boolean; // TODO not working in form
+  networkIds?: string[];
 }) {
-  const items = useNetworkSelectorItems();
+  const intl = useIntl();
   return (
     <ChainSelectorInput
-      testID="network-selector"
-      title="Network"
-      value={value}
-      onChange={onChange}
-      networkIds={items.map((o) => o.value)}
+      testID="network-selector-input"
+      title={intl.formatMessage({ id: ETranslations.global_networks })}
       borderRadius="$3"
       borderWidth={1}
       borderCurve="continuous"
-      borderColor="$borderSubdued"
+      borderColor="$borderStrong"
       userSelect="none"
       px="$3"
       py="$2.5"
@@ -183,6 +190,9 @@ export function ControlledNetworkSelectorTrigger({
         borderRadius: '$2',
         py: '$2',
       }}
+      {...rest}
+      disabled={forceDisabled || disabled}
+      networkIds={networkIds}
     />
   );
 }

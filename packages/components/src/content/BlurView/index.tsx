@@ -6,24 +6,24 @@ import { BlurView as NativeBlurView } from 'expo-blur';
 import { type View as IView, type ViewStyle } from 'react-native';
 
 import { useThemeName } from '../../hooks';
-import { View } from '../../optimization';
+import { OptimizationView } from '../../optimization';
 
-import type { StackStyleProps } from '@tamagui/web/types/types';
+import type { StackStyle } from '@tamagui/web/types/types';
 import type { BlurViewProps } from 'expo-blur';
 
 export type IBlurViewPros = Omit<BlurViewProps, 'style' | 'intensity'> &
-  StackStyleProps & {
+  StackStyle & {
     /**
      * intensity will be used like `blur(${intensity * 0.2}px)` on Web.
      *
      * @default 50
      */
     intensity?: number;
-    contentStyle?: StackStyleProps;
+    contentStyle?: StackStyle;
   };
 
 function BasicBlurView(
-  { contentStyle, ...props }: IBlurViewPros,
+  { contentStyle, experimentalBlurMethod, ...props }: IBlurViewPros,
   ref: ForwardedRef<any>,
 ) {
   const themeName = useThemeName();
@@ -36,7 +36,7 @@ function BasicBlurView(
   });
 
   return (
-    <View
+    <OptimizationView
       style={{
         ...(style as ViewStyle),
         overflow: 'hidden',
@@ -45,10 +45,11 @@ function BasicBlurView(
       <NativeBlurView
         style={contentStyle ? (resolvedContentStyle as ViewStyle) : { flex: 1 }}
         tint={themeName}
+        experimentalBlurMethod={experimentalBlurMethod || 'dimezisBlurView'}
         {...restProps}
         ref={ref}
       />
-    </View>
+    </OptimizationView>
   );
 }
 

@@ -3,13 +3,19 @@ export type IClearCacheOnAppState = {
   transactionHistory: boolean;
   swapHistory: boolean;
   browserCache: boolean;
+  appUpdateCache: boolean;
   browserHistory: boolean;
+  customToken: boolean;
+  customRpc: boolean;
+  serverNetworks: boolean;
   connectSites: boolean;
+  signatureRecord: boolean;
 };
 
 export enum EReasonForNeedPassword {
   CreateOrRemoveWallet = 'CreateOrRemoveWallet',
   CreateTransaction = 'CreateTransaction',
   LightningNetworkAuth = 'LightningNetworkAuth',
-  ChangePassword = 'ChangePassword',
+  Security = 'Security',
+  Default = 'Default', // Default is for the case that the reason is not specified
 }

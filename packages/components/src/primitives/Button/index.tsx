@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+
 import {
   ThemeableStack,
   getTokenValue,
@@ -25,12 +27,14 @@ export interface IButtonProps extends ThemeableStackProps {
   children?: React.ReactNode;
   color?: ColorTokens;
   iconColor?: ColorTokens;
+  textAlign?: 'left' | 'center' | 'right';
   /**
    * stop propagation from button.
    *
    * @default true
    */
   stopPropagation?: boolean;
+  onPressDebounce?: number;
 }
 
 const BUTTON_VARIANTS: Record<
@@ -95,7 +99,7 @@ export const getSharedButtonStyles = ({
           hoverStyle: { bg: hoverBg },
           pressStyle: { bg: activeBg },
           focusable: true,
-          focusStyle: {
+          focusVisibleStyle: {
             outlineColor: focusRingColor,
             outlineStyle: 'solid',
             outlineWidth: 2,
@@ -113,30 +117,30 @@ export const getSharedButtonStyles = ({
   };
 };
 
-const getSizeStyles = (size: IButtonProps['size']) => {
-  const sizes = {
-    small: {
-      py: '$1',
-      px: '$2.5',
-      borderRadius: getTokenValue('$size.2'),
-      textVariant: '$bodyMdMedium',
-    },
-    medium: {
-      py: '$1.5',
-      px: '$3.5',
-      borderRadius: getTokenValue('$size.2'),
-      textVariant: '$bodyLgMedium',
-    },
-    large: {
-      py: '$3',
-      px: '$5',
-      borderRadius: getTokenValue('$size.3'),
-      textVariant: '$bodyLgMedium',
-    },
-  };
-
-  return sizes[size || 'medium'];
-};
+const useSizeStyles = (size: IButtonProps['size']) =>
+  useMemo(() => {
+    const sizes = {
+      small: {
+        py: '$1',
+        px: '$2.5',
+        borderRadius: getTokenValue('$size.2'),
+        textVariant: '$bodyMdMedium',
+      },
+      medium: {
+        py: '$1.5',
+        px: '$3.5',
+        borderRadius: getTokenValue('$size.2'),
+        textVariant: '$bodyLgMedium',
+      },
+      large: {
+        py: '$3',
+        px: '$5',
+        borderRadius: getTokenValue('$size.3'),
+        textVariant: '$bodyLgMedium',
+      },
+    };
+    return sizes[size || 'medium'] || sizes.medium;
+  }, [size]);
 
 export const ButtonFrame = styled(ThemeableStack, {
   tag: 'button',
@@ -162,7 +166,7 @@ type ISharedFrameStylesProps = {
     bg: ColorTokens;
   };
   focusable: boolean;
-  focusStyle: {
+  focusVisibleStyle: {
     outlineColor: ColorTokens;
     outlineStyle: string;
     outlineWidth: number;
@@ -183,10 +187,11 @@ const ButtonComponent = ButtonFrame.styleable<IButtonProps>((props, ref) => {
     color: outerColor,
     iconColor: outerIconColor,
     variant = 'secondary',
+    textAlign,
     ...rest
   } = useProps(props, {});
 
-  const { py, px, borderRadius, textVariant } = getSizeStyles(size);
+  const { py, px, borderRadius, textVariant } = useSizeStyles(size);
 
   const { sharedFrameStyles, iconColor, color } = getSharedButtonStyles({
     variant,
@@ -203,21 +208,22 @@ const ButtonComponent = ButtonFrame.styleable<IButtonProps>((props, ref) => {
   return (
     <ButtonFrame
       ref={ref}
-      my={variant === 'tertiary' ? '$-1' : '$0'}
-      mx={variant === 'tertiary' ? '$-2' : '$0'}
+      my={variant === 'tertiary' ? -5 : '$0'}
+      mx={variant === 'tertiary' ? -9 : '$0'}
       py={variant === 'tertiary' ? '$1' : py}
       px={variant === 'tertiary' ? '$2' : px}
       borderRadius={borderRadius}
       borderCurve="continuous"
-      disabled={disabled || loading}
+      disabled={!!disabled || !!loading}
+      aria-disabled={!!disabled || !!loading}
       {...sharedFrameStyles}
       hoverStyle={{
         ...sharedFrameStyles.hoverStyle,
         ...props.hoverStyle,
       }}
-      focusStyle={{
-        ...sharedFrameStyles.focusStyle,
-        ...props.focusStyle,
+      focusVisibleStyle={{
+        ...sharedFrameStyles.focusVisibleStyle,
+        ...props.focusVisibleStyle,
       }}
       pressStyle={{
         ...sharedFrameStyles.pressStyle,
@@ -240,6 +246,7 @@ const ButtonComponent = ButtonFrame.styleable<IButtonProps>((props, ref) => {
         <Spinner size="small" mr="$2" color={outerIconColor || iconColor} />
       ) : null}
       <SizableText
+        textAlign={textAlign}
         size={textVariant as FontSizeTokens}
         color={outerColor || color}
       >

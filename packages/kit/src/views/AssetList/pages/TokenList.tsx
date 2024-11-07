@@ -1,15 +1,23 @@
 import { memo, useCallback, useEffect } from 'react';
 
 import { useRoute } from '@react-navigation/core';
-import { debounce } from 'lodash';
+import { debounce, isString } from 'lodash';
 import { useIntl } from 'react-intl';
 
-import { Page, Popover, SizableText, Stack } from '@onekeyhq/components';
+import {
+  Page,
+  Popover,
+  SizableText,
+  Stack,
+  XStack,
+  YStack,
+} from '@onekeyhq/components';
 import { HeaderIconButton } from '@onekeyhq/components/src/layouts/Navigation/Header';
 import {
   ENABLE_SEARCH_TOKEN_LIST_MIN_LENGTH,
   SEARCH_DEBOUNCE_INTERVAL,
 } from '@onekeyhq/shared/src/consts/walletConsts';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type {
   EModalAssetListRoutes,
   IModalAssetListParamList,
@@ -42,11 +50,15 @@ function TokenList() {
   const {
     accountId,
     networkId,
+    walletId,
     tokenList,
     title,
     helpText,
     onPressToken,
     isBlocked,
+    deriveInfo,
+    deriveType,
+    isAllNetworks,
   } = route.params;
   const { tokens, map: tokenMap, keys } = tokenList;
 
@@ -62,27 +74,55 @@ function TokenList() {
 
     return (
       <Popover
-        title="Define"
+        title={intl.formatMessage({ id: ETranslations.low_value_assets })}
         renderTrigger={<HeaderIconButton icon="QuestionmarkOutline" />}
         renderContent={
-          <Stack p="$5">
-            <SizableText>{helpText}</SizableText>
-          </Stack>
+          <YStack p="$5" gap="$2">
+            {isString(helpText) ? (
+              <SizableText>{helpText}</SizableText>
+            ) : (
+              helpText.map((text, index) => (
+                <XStack key={index} gap="$2">
+                  <Stack
+                    w="$1.5"
+                    h="$1.5"
+                    bg="$textSubdued"
+                    borderRadius="$full"
+                    mt="$2"
+                  />
+                  <SizableText size="$bodyMd">{text}</SizableText>
+                </XStack>
+              ))
+            )}
+          </YStack>
         }
       />
     );
-  }, [helpText]);
+  }, [helpText, intl]);
 
   const handleOnPressToken = useCallback(
     (token: IToken) => {
       navigation.push(EModalAssetDetailRoutes.TokenDetails, {
-        accountId,
-        networkId,
+        accountId: token.accountId ?? accountId,
+        networkId: token.networkId ?? networkId,
+        walletId,
         tokenInfo: token,
         isBlocked,
+        deriveInfo,
+        deriveType,
+        isAllNetworks,
       });
     },
-    [accountId, isBlocked, navigation, networkId],
+    [
+      accountId,
+      deriveInfo,
+      deriveType,
+      isAllNetworks,
+      isBlocked,
+      navigation,
+      networkId,
+      walletId,
+    ],
   );
 
   useEffect(() => {
@@ -91,7 +131,9 @@ function TokenList() {
         tokens,
         keys,
       });
-      refreshTokenListMap(tokenMap);
+      refreshTokenListMap({
+        tokens: tokenMap,
+      });
       updateTokenListState({ initialized: true, isRefreshing: false });
     }
   }, [
@@ -116,7 +158,9 @@ function TokenList() {
                     updateSearchKey(e.nativeEvent.text),
                   SEARCH_DEBOUNCE_INTERVAL,
                 ),
-                placeholder: intl.formatMessage({ id: 'form__search' }),
+                placeholder: intl.formatMessage({
+                  id: ETranslations.global_search,
+                }),
               }
             : undefined
         }
@@ -125,6 +169,8 @@ function TokenList() {
         <TokenListView
           onPressToken={onPressToken ?? handleOnPressToken}
           withPrice
+          withNetwork={isAllNetworks}
+          isAllNetworks={isAllNetworks}
         />
       </Page.Body>
     </Page>

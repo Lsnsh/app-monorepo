@@ -1,7 +1,16 @@
-import { Icon, Image, SizableText, XStack, YStack } from '@onekeyhq/components';
+import {
+  Icon,
+  Image,
+  SizableText,
+  Skeleton,
+  XStack,
+  YStack,
+} from '@onekeyhq/components';
 import { AccountSelectorProviderMirror } from '@onekeyhq/kit/src/components/AccountSelector';
+import { IMPL_ALGO } from '@onekeyhq/shared/src/engine/engineConsts';
 import { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
 import type {
+  IConnectionAccountInfo,
   IConnectionAccountInfoWithNum,
   IConnectionItemWithStorageType,
   IConnectionStorageType,
@@ -28,13 +37,33 @@ function ConnectionListItem({
     prevAccountInfo: IConnectionAccountInfoWithNum;
   }) => void;
 }) {
+  // Switching accounts in Algo is not supported because no dApps listen for the walletconnect updateSession event
+  const getReadonly = (connectionInfo: IConnectionAccountInfo) => {
+    if (item.storageType !== 'walletConnect') return false;
+    return connectionInfo.networkImpl === IMPL_ALGO;
+  };
   return (
-    <YStack space="$5" p="$5">
-      <XStack alignItems="center" justifyContent="space-between">
-        <XStack alignItems="center" space="$3">
-          <Image w="$10" h="$10" source={{ uri: item.imageURL }} />
-          <SizableText size="$bodyLgMedium" color="$text">
-            {item.origin}
+    <YStack gap="$5" p="$5">
+      <XStack alignItems="center" justifyContent="space-between" gap="$3">
+        <XStack flex={1} alignItems="center" gap="$3">
+          <Image size="$10" borderRadius="$full">
+            <Image.Source src={item.imageURL} />
+            <Image.Fallback>
+              <Icon size="$10" name="GlobusOutline" />
+            </Image.Fallback>
+            <Image.Loading>
+              <Skeleton width="100%" height="100%" />
+            </Image.Loading>
+          </Image>
+          <SizableText
+            size="$bodyLgMedium"
+            color="$text"
+            numberOfLines={3}
+            style={{
+              wordBreak: 'break-all',
+            }}
+          >
+            {new URL(item.origin).hostname}
           </SizableText>
         </XStack>
         <XStack
@@ -48,7 +77,7 @@ function ConnectionListItem({
             bg: '$bgActive',
           }}
           focusable
-          focusStyle={{
+          focusVisibleStyle={{
             outlineWidth: 2,
             outlineColor: '$focusRing',
             outlineStyle: 'solid',
@@ -68,7 +97,7 @@ function ConnectionListItem({
         enabledNum={Object.keys(item.connectionMap).map((num) => Number(num))}
         availableNetworksMap={item.availableNetworksMap}
       >
-        <YStack space="$2">
+        <YStack gap="$2">
           {Object.keys(item.connectionMap).map((num) => (
             <DAppAccountListItem
               key={num}
@@ -85,6 +114,7 @@ function ConnectionListItem({
                   },
                 });
               }}
+              readonly={getReadonly(item.connectionMap[Number(num)])}
             />
           ))}
         </YStack>

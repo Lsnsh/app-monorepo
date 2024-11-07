@@ -1,31 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useRoute } from '@react-navigation/core';
+import { isEqual, noop } from 'lodash';
+import { useIntl } from 'react-intl';
+import { useDebouncedCallback } from 'use-debounce';
 
-import type { ISectionListRef } from '@onekeyhq/components';
+import type { ISortableSectionListRef } from '@onekeyhq/components';
 import {
-  ActionList,
   Icon,
-  IconButton,
+  InputUnControlled,
   SectionList,
-  SizableText,
   Stack,
   useSafeAreaInsets,
   useSafelyScrollToLocation,
 } from '@onekeyhq/components';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
-import { AccountAvatar } from '@onekeyhq/kit/src/components/AccountAvatar';
-import { AccountSelectorCreateAddressButton } from '@onekeyhq/kit/src/components/AccountSelector/AccountSelectorCreateAddressButton';
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
 import useAppNavigation from '@onekeyhq/kit/src/hooks/useAppNavigation';
 import { usePromiseResult } from '@onekeyhq/kit/src/hooks/usePromiseResult';
 import {
   useAccountSelectorActions,
   useAccountSelectorEditModeAtom,
-  useActiveAccount,
   useSelectedAccount,
 } from '@onekeyhq/kit/src/states/jotai/contexts/accountSelector';
-import { AccountEditButton } from '@onekeyhq/kit/src/views/AccountManagerStacks/components/AccountEdit';
 import type {
   IDBAccount,
   IDBDevice,
@@ -33,6 +29,10 @@ import type {
   IDBWallet,
 } from '@onekeyhq/kit-bg/src/dbs/local/types';
 import type { IAccountSelectorAccountsListSectionData } from '@onekeyhq/kit-bg/src/dbs/simple/entity/SimpleDbEntityAccountSelector';
+import {
+  accountSelectorAccountsListIsLoadingAtom,
+  indexedAccountAddressCreationStateAtom,
+} from '@onekeyhq/kit-bg/src/states/jotai/atoms';
 import { emptyArray } from '@onekeyhq/shared/src/consts';
 import {
   WALLET_TYPE_EXTERNAL,
@@ -43,17 +43,21 @@ import {
   EAppEventBusNames,
   appEventBus,
 } from '@onekeyhq/shared/src/eventBus/appEventBus';
-import type {
-  EAccountManagerStacksRoutes,
-  IAccountManagerStacksParamList,
-} from '@onekeyhq/shared/src/routes';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
 import { EModalRoutes, EOnboardingPages } from '@onekeyhq/shared/src/routes';
 import accountUtils from '@onekeyhq/shared/src/utils/accountUtils';
+import networkUtils from '@onekeyhq/shared/src/utils/networkUtils';
 
+import { useAccountSelectorRoute } from '../../../router/useAccountSelectorRoute';
+
+import { AccountSelectorAccountListItem } from './AccountSelectorAccountListItem';
+import { AccountSelectorAddAccountButton } from './AccountSelectorAddAccountButton';
+import { EmptyNoAccountsView, EmptyView } from './EmptyView';
 import { WalletDetailsHeader } from './WalletDetailsHeader';
 import { WalletOptions } from './WalletOptions';
 
-import type { RouteProp } from '@react-navigation/core';
+import type { LayoutChangeEvent, LayoutRectangle } from 'react-native';
 
 export interface IWalletDetailsProps {
   num: number;
@@ -61,109 +65,53 @@ export interface IWalletDetailsProps {
   device?: IDBDevice | undefined;
 }
 
-export function WalletDetails({ num }: IWalletDetailsProps) {
+function WalletDetailsView({ num }: IWalletDetailsProps) {
+  const intl = useIntl();
   const [editMode, setEditMode] = useAccountSelectorEditModeAtom();
-  const { serviceAccount } = backgroundApiProxy;
+  const { serviceAccount, serviceAccountSelector, serviceNetwork } =
+    backgroundApiProxy;
   const { selectedAccount } = useSelectedAccount({ num });
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { activeAccount } = useActiveAccount({ num });
   const actions = useAccountSelectorActions();
-  const listRef = useRef<ISectionListRef<any> | null>(null);
-  const route =
-    useRoute<
-      RouteProp<
-        IAccountManagerStacksParamList,
-        EAccountManagerStacksRoutes.AccountSelectorStack
-      >
-    >();
+  const listRef = useRef<ISortableSectionListRef<any> | null>(null);
+  const route = useAccountSelectorRoute();
   const linkNetwork = route.params?.linkNetwork;
+  const isEditableRouteParams = route.params?.editable;
   const linkedNetworkId = linkNetwork ? selectedAccount?.networkId : undefined;
+  const [searchText, setSearchText] = useState('');
+
+  defaultLogger.accountSelector.perf.renderAccountsList({
+    editMode,
+    selectedAccount,
+  });
 
   const navigation = useAppNavigation();
 
+  // TODO move to hooks
   const isOthers = selectedAccount?.focusedWallet === '$$others';
+  const isOthersWallet = Boolean(
+    selectedAccount?.focusedWallet &&
+      accountUtils.isOthersWallet({
+        walletId: selectedAccount?.focusedWallet,
+      }),
+  );
+  const isOthersUniversal = isOthers || isOthersWallet;
+  // const isOthersUniversal = true;
 
-  const handleImportWatchingAccount = useCallback(() => {
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.ImportAddress,
-    });
-  }, [navigation]);
+  const handleSearch = useDebouncedCallback((text: string) => {
+    setSearchText(text?.trim() || '');
+  }, 300);
 
-  const handleImportPrivatekeyAccount = useCallback(() => {
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.ImportPrivateKey,
-    });
-  }, [navigation]);
-
-  const handleAddExternalAccount = useCallback(() => {
-    console.log('handleAddExternalAccount');
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.ConnectWallet,
-    });
-  }, [navigation]);
-
-  const { result: focusedWalletInfo, run: reloadFocusedWalletInfo } =
-    usePromiseResult(
-      async () => {
-        if (!selectedAccount?.focusedWallet) {
-          return undefined;
-        }
-        const isHd = accountUtils.isHdWallet({
-          walletId: selectedAccount?.focusedWallet,
-        });
-        const isHw = accountUtils.isHwWallet({
-          walletId: selectedAccount?.focusedWallet,
-        });
-        if (isHd || isHw) {
-          try {
-            const wallet = await serviceAccount.getWallet({
-              walletId: selectedAccount?.focusedWallet,
-            });
-
-            let device: IDBDevice | undefined;
-            if (isHw) {
-              device = await serviceAccount.getWalletDevice({
-                walletId: selectedAccount?.focusedWallet,
-              });
-            }
-
-            return {
-              wallet,
-              device,
-            };
-          } catch (error) {
-            // wallet may be removed
-            console.error(error);
-            return undefined;
-          }
-        }
-      },
-      [selectedAccount?.focusedWallet, serviceAccount],
-      {
-        checkIsFocused: false,
-        // debounced: 100,
-      },
-    );
-
-  useEffect(() => {
-    const fn = async () => {
-      // await wait(300);
-      await reloadFocusedWalletInfo();
-    };
-    // TODO sync device features to DB and reload data
-    appEventBus.on(EAppEventBusNames.WalletUpdate, fn);
-    return () => {
-      appEventBus.off(EAppEventBusNames.WalletUpdate, fn);
-    };
-  }, [reloadFocusedWalletInfo]);
-
-  const { result: sectionData, run: reloadAccounts } = usePromiseResult(
+  const {
+    result: listDataResult,
+    run: reloadAccounts,
+    setResult: setListDataResult,
+  } = usePromiseResult(
     async () => {
       if (!selectedAccount?.focusedWallet) {
         return Promise.resolve(undefined);
       }
-
-      return serviceAccount.getAccountSelectorAccountsListSectionData({
+      // await timerUtils.wait(1000);
+      return serviceAccountSelector.buildAccountSelectorAccountsListData({
         focusedWallet: selectedAccount?.focusedWallet,
         linkedNetworkId,
         deriveType: selectedAccount.deriveType,
@@ -175,11 +123,52 @@ export function WalletDetails({ num }: IWalletDetailsProps) {
       selectedAccount.deriveType,
       selectedAccount?.focusedWallet,
       selectedAccount?.networkId,
-      serviceAccount,
+      serviceAccountSelector,
     ],
     {
+      // debounced: 100,
       checkIsFocused: false,
+      watchLoading: false,
+      onIsLoadingChange(loading) {
+        // setIsLoading(loading);
+        void accountSelectorAccountsListIsLoadingAtom.set(loading);
+      },
     },
+  );
+  const sectionDataOriginal = useMemo(
+    () => listDataResult?.sectionData || [],
+    [listDataResult?.sectionData],
+  );
+  const sectionData = useMemo(() => {
+    if (!searchText) {
+      return sectionDataOriginal;
+    }
+    const sectionDataFiltered: IAccountSelectorAccountsListSectionData[] = [];
+    sectionDataOriginal.forEach((section) => {
+      const { data, ...others } = section;
+      sectionDataFiltered.push({
+        ...others,
+        data:
+          (data as IDBIndexedAccount[])?.filter((item) =>
+            item?.name?.toLowerCase()?.includes(searchText?.toLowerCase()),
+          ) ?? [],
+      });
+    });
+    return sectionDataFiltered;
+  }, [sectionDataOriginal, searchText]);
+  const sectionDataRef = useRef(sectionData);
+  sectionDataRef.current = sectionData;
+  const accountsValue = useMemo(
+    () => listDataResult?.accountsValue || [],
+    [listDataResult?.accountsValue],
+  );
+  const accountsCount = useMemo(
+    () => listDataResult?.accountsCount ?? 0,
+    [listDataResult?.accountsCount],
+  );
+  const focusedWalletInfo = useMemo(
+    () => listDataResult?.focusedWalletInfo,
+    [listDataResult?.focusedWalletInfo],
   );
 
   useEffect(() => {
@@ -194,86 +183,138 @@ export function WalletDetails({ num }: IWalletDetailsProps) {
     };
   }, [reloadAccounts]);
 
-  const { scrollToLocation, onLayout } = useSafelyScrollToLocation(listRef);
-  // scroll into selected account
+  const headerHeightRef = useRef(0);
+
+  // Change the getItemLayout of SectionList to ref calculation, instead of state calculation, to avoid redraws
+  const getItemLayout = useCallback(
+    (item: ArrayLike<unknown> | undefined | null, index: number) => {
+      const getLayoutList = () => {
+        let offset = 0;
+        const layouts: { offset: number; length: number; index: number }[] = [];
+        offset += headerHeightRef?.current ?? 0;
+        sectionDataRef?.current?.forEach?.((section, sectionIndex) => {
+          if (sectionIndex !== 0) {
+            layouts.push({ offset, length: 0, index: layouts.length });
+            offset += 0;
+          }
+          layouts.push({ offset, length: 0, index: layouts.length });
+          offset += 0;
+          section.data.forEach(() => {
+            layouts.push({ offset, length: 60, index: layouts.length });
+            offset += 60;
+          });
+          const footerHeight = 60;
+          layouts.push({ offset, length: footerHeight, index: layouts.length });
+          offset += footerHeight;
+        });
+        return layouts;
+      };
+
+      if (index === -1) {
+        return { index, offset: 0, length: 0 };
+      }
+
+      return getLayoutList()[index];
+    },
+    [],
+  );
+
+  const [listViewLayout, setListViewLayout] = useState<LayoutRectangle>({
+    x: 0,
+    y: 0,
+    height: 400,
+    width: 200,
+  });
+  const listViewLayoutRef = useRef(listViewLayout);
+  listViewLayoutRef.current = listViewLayout;
+
+  const { scrollToLocation, onLayout: handleLayoutForSectionList } =
+    useSafelyScrollToLocation(listRef);
+
+  const handleLayoutForContainer = useCallback((e: LayoutChangeEvent) => {
+    if (isEqual(listViewLayoutRef.current, e.nativeEvent.layout)) {
+      return;
+    }
+    setListViewLayout(e.nativeEvent.layout);
+  }, []);
+
+  const handleLayoutForHeader = useCallback((e: LayoutChangeEvent) => {
+    if (headerHeightRef.current === e.nativeEvent.layout.height) {
+      return;
+    }
+    headerHeightRef.current = e.nativeEvent.layout.height;
+  }, []);
+  const handleLayoutCache = useRef<{
+    [key in 'container' | 'header' | 'list']?: () => void;
+  }>({});
+  const handleLayoutExecuteDebounced = useDebouncedCallback(
+    () => {
+      Object.values(handleLayoutCache.current).forEach((fn) => {
+        fn();
+      });
+      handleLayoutCache.current = {};
+    },
+    200,
+    { leading: false, trailing: true },
+  );
+  const handleLayoutCacheSet = useCallback(
+    (key: 'container' | 'header' | 'list', fn: () => void) => {
+      // *** execute onLayout() immediately which cause re-render many times
+      // fn();
+
+      // *** comment out for better performance and disable onLayout() totally
+      handleLayoutCache.current[key] = fn;
+      handleLayoutExecuteDebounced();
+    },
+    [handleLayoutExecuteDebounced],
+  );
   useEffect(() => {
+    // @ts-ignore
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    if (listRef?.current?._listRef?._hasDoneInitialScroll) {
+      // @ts-ignore
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      listRef.current._listRef._hasDoneInitialScroll = false;
+    }
+  }, [focusedWalletInfo, searchText]);
+  const initialScrollIndex = useMemo(() => {
+    if (searchText.length > 0) {
+      return undefined;
+    }
     if (sectionData?.[0]?.data) {
       const itemIndex = sectionData[0].data?.findIndex(({ id }) =>
-        isOthers
+        isOthersUniversal
           ? selectedAccount.othersWalletAccountId === id
           : selectedAccount.indexedAccountId === id,
       );
-      console.log('itemIndex----', itemIndex);
-      scrollToLocation({
-        animated: true,
-        sectionIndex: 0,
-        itemIndex: Math.max(itemIndex, 0),
-      });
+      if (
+        listViewLayout.height > 0 &&
+        itemIndex * 60 <= listViewLayout.height
+      ) {
+        return undefined;
+      }
+      return Math.max(itemIndex + 1, 0);
     }
   }, [
-    isOthers,
-    scrollToLocation,
+    searchText,
+    isOthersUniversal,
+    listViewLayout.height,
     sectionData,
     selectedAccount.indexedAccountId,
     selectedAccount.othersWalletAccountId,
   ]);
 
-  const [remember, setIsRemember] = useState(false);
+  // const scrollToTop = useCallback(() => {
+  //   if (sectionData?.length) {
+  //     scrollToLocation({
+  //       animated: true,
+  //       sectionIndex: 0,
+  //       itemIndex: 0,
+  //     });
+  //   }
+  // }, [scrollToLocation, sectionData]);
+
   const { bottom } = useSafeAreaInsets();
-
-  const pushImportPrivateKeyModal = useCallback(() => {
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.ImportPrivateKey,
-    });
-  }, [navigation]);
-
-  const pushImportAddressModal = useCallback(() => {
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.ImportAddress,
-    });
-  }, [navigation]);
-
-  const pushConnectWalletModal = useCallback(() => {
-    navigation.pushModal(EModalRoutes.OnboardingModal, {
-      screen: EOnboardingPages.ConnectWallet,
-    });
-  }, [navigation]);
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const getAddAccountPressEvent = (type: any) => {
-    if (type === 'Private key') return pushImportPrivateKeyModal();
-    if (type === 'Watchlist') return pushImportAddressModal();
-    if (type === 'External') return pushConnectWalletModal();
-
-    return console.log('clicked');
-  };
-
-  const buildSubTitleInfo = useCallback(
-    (item: IDBAccount | IDBIndexedAccount) => {
-      let address: string | undefined;
-      if (isOthers) {
-        const account = item as IDBAccount | undefined;
-        address = account?.address;
-      } else {
-        const indexedAccount = item as IDBIndexedAccount | undefined;
-        address = indexedAccount?.associateAccount?.address;
-      }
-      if (!address && !isOthers && linkNetwork) {
-        // TODO custom style
-        return {
-          address: `No ${activeAccount?.network?.shortname || ''} address`,
-          isEmptyAddress: true,
-        };
-      }
-      return {
-        address: accountUtils.shortenAddress({
-          address,
-        }),
-        isEmptyAddress: false,
-      };
-    },
-    [activeAccount?.network?.shortname, isOthers, linkNetwork],
-  );
 
   // const isEmptyData = useMemo(() => {
   //   let count = 0;
@@ -284,302 +325,278 @@ export function WalletDetails({ num }: IWalletDetailsProps) {
   // }, [sectionData]);
 
   const editable = useMemo(() => {
-    if (selectedAccount.focusedWallet === '$$others') {
-      if (
-        sectionData?.some((section) => {
-          if (section.data.length) {
-            return true;
-          }
-          return false;
-        })
-      ) {
-        return true;
-      }
+    if (!isEditableRouteParams) {
       return false;
     }
+    // if (isOthersUniversal) {
+    //   if (
+    //     sectionData?.some((section) => {
+    //       if (section.data.length) {
+    //         return true;
+    //       }
+    //       return false;
+    //     })
+    //   ) {
+    //     return true;
+    //   }
+    //   return false;
+    // }
     if (!sectionData || sectionData.length === 0) {
       return false;
     }
     return true;
-  }, [sectionData, selectedAccount.focusedWallet]);
+  }, [sectionData, isEditableRouteParams]);
+
+  const title = useMemo(() => {
+    if (isOthers) {
+      return 'Others';
+    }
+    return focusedWalletInfo?.wallet?.name || '';
+  }, [focusedWalletInfo, isOthers]);
+
+  // useCallback cause re-render when unmount, but useMemo not
+  const sectionListMemo = useMemo(
+    () => (
+      <Stack
+        flex={1}
+        // TODO performance
+        onLayout={(e) => {
+          e?.persist?.();
+          handleLayoutCacheSet('container', () => handleLayoutForContainer(e));
+        }}
+      >
+        {(() => {
+          defaultLogger.accountSelector.perf.renderAccountsSectionList({
+            accountsCount,
+            walletName: focusedWalletInfo?.wallet?.name,
+          });
+          return null;
+        })()}
+        {listViewLayout.height ? (
+          <SectionList
+            ref={listRef}
+            // TODO performance
+            onLayout={(e) => {
+              e?.persist?.();
+              handleLayoutCacheSet('list', () => handleLayoutForSectionList(e));
+            }}
+            estimatedItemSize={60}
+            initialScrollIndex={initialScrollIndex}
+            getItemLayout={getItemLayout}
+            keyExtractor={(item) =>
+              `${editable ? '1' : '0'}_${
+                (item as IDBIndexedAccount | IDBAccount).id
+              }`
+            }
+            ListEmptyComponent={<EmptyView />}
+            contentContainerStyle={{ pb: '$3' }}
+            extraData={[selectedAccount.indexedAccountId, editMode]}
+            // {...(wallet?.type !== 'others' && {
+            //   ListHeaderComponent: (
+            //     <WalletOptions editMode={editMode} wallet={wallet} />
+            //   ),
+            // })}
+            ListHeaderComponent={
+              <Stack>
+                {isOthersUniversal ? null : (
+                  <Stack
+                    // TODO performance
+                    onLayout={(e) => {
+                      e?.persist?.();
+                      handleLayoutCacheSet('header', () =>
+                        handleLayoutForHeader(e),
+                      );
+                    }}
+                  >
+                    <WalletOptions
+                      wallet={focusedWalletInfo?.wallet}
+                      device={focusedWalletInfo?.device}
+                    />
+                  </Stack>
+                )}
+                {accountsCount && accountsCount > 0 ? (
+                  <Stack px="$5" py="$2">
+                    <InputUnControlled
+                      leftIconName="SearchOutline"
+                      size="small"
+                      allowClear
+                      placeholder={intl.formatMessage({
+                        id: ETranslations.global_search_account_selector,
+                      })}
+                      defaultValue={searchText}
+                      onChangeText={handleSearch}
+                    />
+                  </Stack>
+                ) : null}
+              </Stack>
+            }
+            sections={sectionData ?? (emptyArray as any)}
+            renderSectionHeader={({
+              section,
+            }: {
+              section: IAccountSelectorAccountsListSectionData;
+            }) => (
+              <>
+                {/* If better performance is needed,  */
+                /*  a header component should be extracted and data updates should be subscribed to through context" */}
+                <EmptyNoAccountsView section={section} />
+                {/* No accounts */}
+              </>
+            )}
+            renderItem={({
+              item,
+              section,
+              index,
+            }: {
+              item: IDBIndexedAccount | IDBAccount;
+              section: IAccountSelectorAccountsListSectionData;
+              index: number;
+            }) => (
+              <AccountSelectorAccountListItem
+                num={num}
+                linkedNetworkId={linkedNetworkId}
+                item={item}
+                section={section}
+                index={index}
+                isOthersUniversal={isOthersUniversal}
+                selectedAccount={selectedAccount}
+                accountsValue={accountsValue}
+                linkNetwork={linkNetwork}
+                editMode={editMode}
+                accountsCount={accountsCount}
+                focusedWalletInfo={focusedWalletInfo}
+              />
+            )}
+            renderSectionFooter={({
+              section,
+            }: {
+              section: IAccountSelectorAccountsListSectionData;
+            }) =>
+              // editable mode and not searching, can add account
+              isEditableRouteParams && !searchText ? (
+                <AccountSelectorAddAccountButton
+                  num={num}
+                  isOthersUniversal={isOthersUniversal}
+                  section={section}
+                  focusedWalletInfo={focusedWalletInfo}
+                />
+              ) : null
+            }
+          />
+        ) : null}
+      </Stack>
+    ),
+    [
+      accountsCount,
+      accountsValue,
+      editMode,
+      editable,
+      focusedWalletInfo,
+      getItemLayout,
+      handleLayoutCacheSet,
+      handleLayoutForContainer,
+      handleLayoutForHeader,
+      handleLayoutForSectionList,
+      handleSearch,
+      initialScrollIndex,
+      intl,
+      isEditableRouteParams,
+      isOthersUniversal,
+      linkNetwork,
+      linkedNetworkId,
+      listViewLayout.height,
+      num,
+      searchText,
+      sectionData,
+      selectedAccount,
+    ],
+  );
+
+  // Used to find out which deps cause redraws by binary search
+  const sectionListMemoMock = useMemo(() => {
+    noop([
+      accountsCount,
+      accountsValue,
+      actions,
+      editMode, // toggle editMode
+      editable,
+      focusedWalletInfo,
+      handleLayoutForHeader,
+      handleLayoutForContainer,
+      handleLayoutForSectionList,
+      handleLayoutCacheSet,
+      initialScrollIndex,
+      intl,
+      isEditableRouteParams,
+      isOthersUniversal,
+      // linkNetwork,
+      // linkedNetworkId,
+      // listViewLayout.height,
+      // navigation,
+      // num,
+      // onDragEnd,
+      // renderAccountValue,
+      // sectionData,
+      // selectedAccount.deriveType,
+      // selectedAccount.indexedAccountId,
+      // selectedAccount?.networkId,
+      // selectedAccount.othersWalletAccountId,
+      // serviceAccount,
+    ]);
+    defaultLogger.accountSelector.perf.render_Accounts_SectionList_Mock();
+    return null;
+  }, [
+    accountsCount,
+    accountsValue,
+    actions,
+    editMode,
+    editable,
+    focusedWalletInfo,
+    handleLayoutForHeader,
+    handleLayoutForContainer,
+    handleLayoutForSectionList,
+    handleLayoutCacheSet,
+    initialScrollIndex,
+    intl,
+    isEditableRouteParams,
+    isOthersUniversal,
+  ]);
 
   return (
-    <Stack flex={1} pb={bottom}>
+    <Stack flex={1} pb={bottom} testID="account-selector-accountList">
       <WalletDetailsHeader
         wallet={focusedWalletInfo?.wallet}
+        device={focusedWalletInfo?.device}
         titleProps={{
           opacity: editMode && editable ? 0 : 1,
         }}
         editMode={editMode}
         editable={editable}
+        linkedNetworkId={linkedNetworkId}
+        num={num}
         onEditButtonPress={() => {
           setEditMode((v) => !v);
         }}
         {...(!editMode && {
-          title: isOthers ? 'Others' : focusedWalletInfo?.wallet?.name,
+          title,
         })}
       />
-
-      <SectionList
-        ref={listRef}
-        onLayout={onLayout}
-        ListEmptyComponent={
-          <Stack p="$3">
-            <SizableText>No Wallets</SizableText>
-          </Stack>
-        }
-        contentContainerStyle={{ pb: '$3' }}
-        estimatedItemSize="$14"
-        extraData={[selectedAccount.indexedAccountId, editMode, remember]}
-        // {...(wallet?.type !== 'others' && {
-        //   ListHeaderComponent: (
-        //     <WalletOptions editMode={editMode} wallet={wallet} />
-        //   ),
-        // })}
-        ListHeaderComponent={
-          isOthers ? null : (
-            <WalletOptions
-              wallet={focusedWalletInfo?.wallet}
-              device={focusedWalletInfo?.device}
-            />
-          )
-        }
-        sections={sectionData ?? (emptyArray as any)}
-        renderSectionHeader={({
-          section,
-        }: {
-          section: IAccountSelectorAccountsListSectionData;
-        }) => (
-          <>
-            {/* If better performance is needed,  */
-            /*  a header component should be extracted and data updates should be subscribed to through context" */}
-            {section.title ? (
-              <SectionList.SectionHeader title={section.title}>
-                {section.isHiddenWalletData && editMode ? (
-                  <ActionList
-                    title={section.title}
-                    renderTrigger={
-                      <IconButton
-                        icon="DotHorOutline"
-                        variant="tertiary"
-                        ml="$2"
-                      />
-                    }
-                    sections={[
-                      {
-                        items: [
-                          {
-                            icon: remember
-                              ? 'CheckboxSolid'
-                              : 'SuqarePlaceholderOutline',
-                            ...(remember && {
-                              iconProps: {
-                                color: '$iconActive',
-                              },
-                            }),
-                            label: 'Remember',
-                            onPress: () => setIsRemember(!remember),
-                          },
-                        ],
-                      },
-                      {
-                        items: [
-                          {
-                            icon: 'PencilOutline',
-                            label: 'Rename',
-                            onPress: () => alert('edit 1112'),
-                          },
-                          {
-                            destructive: true,
-                            icon: 'DeleteOutline',
-                            label: 'Remove',
-                            onPress: () => alert('edit 3332'),
-                          },
-                        ],
-                      },
-                    ]}
-                  />
-                ) : null}
-              </SectionList.SectionHeader>
-            ) : null}
-            {section.data.length === 0 && section.emptyText ? (
-              <ListItem
-                title={section.emptyText}
-                titleProps={{
-                  size: '$bodyLg',
-                }}
-              />
-            ) : null}
-          </>
-        )}
-        renderItem={({
-          item,
-        }: {
-          item: IDBIndexedAccount | IDBAccount;
-          section: IAccountSelectorAccountsListSectionData;
-        }) => {
-          const account = isOthers ? (item as IDBAccount) : undefined;
-          const indexedAccount = isOthers
-            ? undefined
-            : (item as IDBIndexedAccount);
-
-          const subTitleInfo = buildSubTitleInfo(item);
-          const shouldShowCreateAddressButton =
-            linkNetwork && subTitleInfo.isEmptyAddress;
-
-          const actionButton = (() => {
-            if (editMode) {
-              return (
-                <>
-                  {/* TODO rename to AccountEditTrigger */}
-                  <AccountEditButton
-                    account={account}
-                    indexedAccount={indexedAccount}
-                  />
-                </>
-              );
-            }
-            if (shouldShowCreateAddressButton) {
-              return (
-                <AccountSelectorCreateAddressButton
-                  num={num}
-                  selectAfterCreate
-                  account={{
-                    walletId: focusedWalletInfo?.wallet?.id,
-                    networkId: linkedNetworkId,
-                    indexedAccountId: indexedAccount?.id,
-                    deriveType: selectedAccount.deriveType,
-                  }}
-                >
-                  <Icon name="PlusSmallOutline" />
-                </AccountSelectorCreateAddressButton>
-              );
-            }
-            return null;
-          })();
-
-          let avatarNetworkId: string | undefined;
-          if (isOthers && account) {
-            avatarNetworkId = accountUtils.getAccountCompatibleNetwork({
-              account,
-              networkId: selectedAccount?.networkId,
-            });
-          }
-
-          return (
-            <ListItem
-              key={item.id}
-              renderAvatar={
-                <AccountAvatar
-                  fallback={<AccountAvatar.Fallback w="$10" h="$10" />}
-                  indexedAccount={isOthers ? undefined : (item as any)}
-                  account={isOthers ? (item as any) : undefined}
-                  networkId={avatarNetworkId}
-                />
-              }
-              title={item.name}
-              titleProps={{
-                numberOfLines: 1,
-              }}
-              subtitle={subTitleInfo.address}
-              subtitleProps={{
-                color: subTitleInfo.isEmptyAddress ? '$textCaution' : undefined,
-              }}
-              {...(!editMode && {
-                onPress: async () => {
-                  // show CreateAddress Button here, disabled confirmAccountSelect()
-                  if (shouldShowCreateAddressButton) {
-                    return;
-                  }
-                  if (isOthers) {
-                    await actions.current.confirmAccountSelect({
-                      num,
-                      indexedAccount: undefined,
-                      othersWalletAccount: item as IDBAccount,
-                      autoChangeToAccountMatchedNetwork: true,
-                    });
-                  } else if (focusedWalletInfo) {
-                    await actions.current.confirmAccountSelect({
-                      num,
-                      indexedAccount: item as IDBIndexedAccount,
-                      othersWalletAccount: undefined,
-                      autoChangeToAccountMatchedNetwork: true,
-                    });
-                  }
-                  navigation.popStack();
-                },
-                checkMark: (() => {
-                  // show CreateAddress Button here, hide checkMark
-                  if (shouldShowCreateAddressButton) {
-                    return undefined;
-                  }
-                  return isOthers
-                    ? selectedAccount.othersWalletAccountId === item.id
-                    : selectedAccount.indexedAccountId === item.id;
-                })(),
-              })}
-            >
-              {actionButton}
-            </ListItem>
-          );
-        }}
-        renderSectionFooter={({
-          section,
-        }: {
-          section: IAccountSelectorAccountsListSectionData;
-        }) => (
-          <ListItem
-            onPress={async () => {
-              if (isOthers) {
-                if (section.walletId === WALLET_TYPE_WATCHING) {
-                  handleImportWatchingAccount();
-                }
-                if (section.walletId === WALLET_TYPE_IMPORTED) {
-                  handleImportPrivatekeyAccount();
-                }
-                if (section.walletId === WALLET_TYPE_EXTERNAL) {
-                  handleAddExternalAccount();
-                }
-                return;
-              }
-              console.log(section);
-              if (!focusedWalletInfo) {
-                return;
-              }
-              const c = await serviceAccount.addHDNextIndexedAccount({
-                walletId: section.walletId,
-              });
-              console.log('addHDNextIndexedAccount>>>', c);
-              void actions.current.updateSelectedAccount({
-                num,
-                builder: (v) => ({
-                  ...v,
-                  walletId: focusedWalletInfo?.wallet?.id,
-                  othersWalletAccountId: undefined,
-                  indexedAccountId: c.indexedAccountId,
-                }),
-              });
-            }}
-          >
-            <Stack
-              bg="$bgStrong"
-              borderRadius="$2"
-              p="$2"
-              borderCurve="continuous"
-            >
-              <Icon name="PlusSmallOutline" />
-            </Stack>
-            {/* Add account */}
-            <ListItem.Text
-              userSelect="none"
-              primary="Add Account"
-              primaryTextProps={{
-                color: '$textSubdued',
-              }}
-            />
-          </ListItem>
-        )}
-      />
+      {sectionListMemo}
+      {sectionListMemoMock}
+      {/* <DelayedRender delay={1000}>
+      </DelayedRender> */}
     </Stack>
   );
 }
+
+/* render times:
+- init
+- atom ready
+- fetch data
+- onLayout1: Stack onLayout
+- onLayout2: SectionList onLayout
+- onLayout3: SectionHeader onLayout
+
+accountsValue use array.find but not map
+*/
+export const WalletDetails = memo(WalletDetailsView);

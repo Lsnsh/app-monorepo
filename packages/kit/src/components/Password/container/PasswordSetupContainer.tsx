@@ -1,6 +1,5 @@
-import { Suspense, memo, useCallback, useMemo, useState } from 'react';
+import { Suspense, memo, useCallback, useEffect, useState } from 'react';
 
-import { AuthenticationType } from 'expo-local-authentication';
 import { useIntl } from 'react-intl';
 
 import { SizableText, Stack, Toast, XStack } from '@onekeyhq/components';
@@ -10,7 +9,10 @@ import {
   usePasswordBiologyAuthInfoAtom,
   usePasswordWebAuthInfoAtom,
 } from '@onekeyhq/kit-bg/src/states/jotai/atoms/password';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
 
+import { useBiometricAuthInfo } from '../../../hooks/useBiometricAuthInfo';
 import { UniversalContainerWithSuspense } from '../../BiologyAuthComponent/container/UniversalContainer';
 import { useWebAuthActions } from '../../BiologyAuthComponent/hooks/useWebAuthActions';
 import PasswordSetup from '../components/PasswordSetup';
@@ -30,25 +32,29 @@ const BiologyAuthContainer = ({
   webAuthIsSupport,
   skipAuth,
 }: IBiologyAuthContainerProps) => {
-  const [{ isSupport: biologyAuthIsSupport, authType }] =
+  const [{ isSupport: biologyAuthIsSupport }] =
     usePasswordBiologyAuthInfoAtom();
+  const [{ isBiologyAuthSwitchOn }] = useSettingsPersistAtom();
   const intl = useIntl();
-  const settingsTitle = useMemo(() => {
+
+  const { title } = useBiometricAuthInfo();
+  const settingsTitle = intl.formatMessage(
+    { id: ETranslations.auth_with_biometric },
+    { biometric: title },
+  );
+
+  useEffect(() => {
     if (
-      biologyAuthIsSupport &&
-      authType.includes(AuthenticationType.FACIAL_RECOGNITION)
+      (platformEnv.isExtensionUiPopup || platformEnv.isExtensionUiSidePanel) &&
+      isBiologyAuthSwitchOn
     ) {
-      return intl.formatMessage(
-        { id: 'content__authentication_with' },
-        { 0: 'FaceID' },
-      );
+      void backgroundApiProxy.serviceSetting.setBiologyAuthSwitchOn(false);
     }
-    return intl.formatMessage(
-      { id: 'content__authentication_with' },
-      { 0: 'TouchID' },
-    );
-  }, [authType, biologyAuthIsSupport, intl]);
-  return biologyAuthIsSupport || webAuthIsSupport ? (
+  }, [isBiologyAuthSwitchOn]);
+
+  return (biologyAuthIsSupport || webAuthIsSupport) &&
+    !platformEnv.isExtensionUiPopup &&
+    !platformEnv.isExtensionUiSidePanel ? (
     <XStack justifyContent="space-between" alignItems="center">
       <SizableText size="$bodyMdMedium">{settingsTitle}</SizableText>
       <Stack>
@@ -59,6 +65,7 @@ const BiologyAuthContainer = ({
 };
 
 const PasswordSetupContainer = ({ onSetupRes }: IPasswordSetupProps) => {
+  const intl = useIntl();
   const [loading, setLoading] = useState(false);
   const [{ isSupport }] = usePasswordWebAuthInfoAtom();
   const [{ isBiologyAuthSwitchOn }] = useSettingsPersistAtom();
@@ -66,12 +73,17 @@ const PasswordSetupContainer = ({ onSetupRes }: IPasswordSetupProps) => {
   const onSetupPassword = useCallback(
     async (data: IPasswordSetupForm) => {
       if (data.confirmPassword !== data.password) {
-        Toast.error({ title: 'password not match' });
+        Toast.error({
+          title: intl.formatMessage({
+            id: ETranslations.auth_error_password_not_match,
+          }),
+        });
       } else {
         setLoading(true);
         try {
           if (isBiologyAuthSwitchOn && isSupport) {
-            await setWebAuthEnable(true);
+            const res = await setWebAuthEnable(true);
+            if (!res) return;
           }
           const encodePassword =
             await backgroundApiProxy.servicePassword.encodeSensitiveText({
@@ -83,17 +95,23 @@ const PasswordSetupContainer = ({ onSetupRes }: IPasswordSetupProps) => {
               encodePassword,
             );
           onSetupRes(setUpPasswordRes);
-          Toast.success({ title: 'Password Set Success' });
+          Toast.success({
+            title: intl.formatMessage({ id: ETranslations.auth_password_set }),
+          });
         } catch (e) {
           console.log('e.stack', (e as Error)?.stack);
           console.error(e);
-          Toast.error({ title: 'password set failed' });
+          Toast.error({
+            title: intl.formatMessage({
+              id: ETranslations.feedback_password_set_failed,
+            }),
+          });
         } finally {
           setLoading(false);
         }
       }
     },
-    [isBiologyAuthSwitchOn, isSupport, onSetupRes, setWebAuthEnable],
+    [intl, isBiologyAuthSwitchOn, isSupport, onSetupRes, setWebAuthEnable],
   );
 
   return (

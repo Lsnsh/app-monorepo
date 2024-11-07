@@ -1,31 +1,42 @@
-import { bufferToU8a, u8aConcat, u8aToU8a, u8aWrapBytes } from '@polkadot/util';
-import { hdLedger } from '@polkadot/util-crypto';
+import { bufferToU8a, u8aConcat } from '@polkadot/util';
+import { encodeAddress, hdLedger } from '@polkadot/util-crypto';
 import { merge } from 'lodash';
 
-import { OneKeyInternalError } from '@onekeyhq/shared/src/errors';
-import { checkIsDefined } from '@onekeyhq/shared/src/utils/assertUtils';
+import {
+  Expect24WordsMnemonicError,
+  OneKeyInternalError,
+} from '@onekeyhq/shared/src/errors';
 import bufferUtils from '@onekeyhq/shared/src/utils/bufferUtils';
 import hexUtils from '@onekeyhq/shared/src/utils/hexUtils';
 
 import { CoreChainApiBase } from '../../base/CoreChainApiBase';
-import { encrypt, mnemonicFromEntropy } from '../../secret';
+import {
+  decrypt,
+  decryptImportedCredential,
+  encrypt,
+  mnemonicFromEntropy,
+} from '../../secret';
+import {
+  type ICoreApiGetAddressItem,
+  type ICoreApiGetAddressQueryImported,
+  type ICoreApiGetAddressQueryPublicKey,
+  type ICoreApiGetAddressesQueryHd,
+  type ICoreApiGetAddressesResult,
+  type ICoreApiGetExportedSecretKey,
+  type ICoreApiPrivateKeysMap,
+  type ICoreApiSignBasePayload,
+  type ICoreApiSignMsgPayload,
+  type ICoreApiSignTxPayload,
+  type ICurveName,
+  type ISignedTxPro,
+} from '../../types';
+import { ECoreApiExportedSecretKeyType } from '../../types';
 import { slicePathTemplate } from '../../utils';
 
+import { serializeMessage, serializeSignedTransaction } from './sdkDot';
 import { DOT_TYPE_PREFIX } from './types';
 
-import type {
-  ICoreApiGetAddressItem,
-  ICoreApiGetAddressQueryImported,
-  ICoreApiGetAddressQueryPublicKey,
-  ICoreApiGetAddressesQueryHd,
-  ICoreApiGetAddressesResult,
-  ICoreApiPrivateKeysMap,
-  ICoreApiSignBasePayload,
-  ICoreApiSignMsgPayload,
-  ICoreApiSignTxPayload,
-  ICurveName,
-  ISignedTxPro,
-} from '../../types';
+import type { IEncodedTxDot } from './types';
 
 const curve: ICurveName = 'ed25519';
 
@@ -38,30 +49,48 @@ const derivationHdLedger = (mnemonic: string, path: string) => {
       message ===
       'Expected a mnemonic with 24 words (or 25 including a password)'
     ) {
-      throw new OneKeyInternalError({
-        message,
-        key: 'msg__error_mnemonics_can_only_be_12_24',
-      });
+      throw new Expect24WordsMnemonicError();
     }
     throw e;
   }
 };
 
-async function serializeMessage(message: string): Promise<Buffer> {
-  const encoded = u8aWrapBytes(message);
-  return Buffer.from(u8aToU8a(encoded));
-}
-
 export default class CoreChainSoftware extends CoreChainApiBase {
+  override async getExportedSecretKey(
+    query: ICoreApiGetExportedSecretKey,
+  ): Promise<string> {
+    const {
+      // networkInfo,
+
+      password,
+      keyType,
+      credentials,
+      // addressEncoding,
+    } = query;
+    console.log(
+      'ExportSecretKeys >>>> dot',
+      this.baseGetCredentialsType({ credentials }),
+    );
+
+    const { privateKeyRaw } = await this.baseGetDefaultPrivateKey(query);
+
+    if (!privateKeyRaw) {
+      throw new Error('privateKeyRaw is required');
+    }
+    if (keyType === ECoreApiExportedSecretKeyType.privateKey) {
+      return `0x${decrypt(password, privateKeyRaw).toString('hex')}`;
+    }
+    throw new Error(`SecretKey type not support: ${keyType}`);
+  }
+
   override async baseGetPrivateKeys({
     payload,
   }: {
     payload: ICoreApiSignBasePayload;
   }): Promise<ICoreApiPrivateKeysMap> {
-    const { credentials, account, password } = payload;
+    const { credentials, account, password, relPaths } = payload;
     let privateKeys: ICoreApiPrivateKeysMap = {};
     if (credentials.hd) {
-      const { relPaths } = account;
       const pathComponents = account.path.split('/');
       const usedRelativePaths = relPaths || [pathComponents.pop() as string];
       const basePath = pathComponents.join('/');
@@ -82,9 +111,13 @@ export default class CoreChainSoftware extends CoreChainApiBase {
       );
     }
     if (credentials.imported) {
-      // TODO handle relPaths privateKey here
-      // const { relPaths } = account;
-      privateKeys[account.path] = credentials.imported;
+      const { privateKey: p } = decryptImportedCredential({
+        password,
+        credential: credentials.imported,
+      });
+      const encryptPrivateKey = bufferUtils.bytesToHex(encrypt(password, p));
+      privateKeys[account.path] = encryptPrivateKey;
+      privateKeys[''] = encryptPrivateKey;
     }
     if (!Object.keys(privateKeys).length) {
       throw new Error('No private keys found');
@@ -103,27 +136,32 @@ export default class CoreChainSoftware extends CoreChainApiBase {
   override async signTransaction(
     payload: ICoreApiSignTxPayload,
   ): Promise<ISignedTxPro> {
-    // throw new Error('Method not implemented.');
     const { unsignedTx } = payload;
     const signer = await this.baseGetSingleSigner({
       payload,
       curve,
     });
-    const txBytes = bufferUtils.toBuffer(
-      checkIsDefined(unsignedTx.rawTxUnsigned),
+    if (!unsignedTx.rawTxUnsigned) {
+      throw new Error('rawTxUnsigned is undefined');
+    }
+    const [signature] = await signer.sign(
+      bufferUtils.toBuffer(bufferUtils.hexToBytes(unsignedTx.rawTxUnsigned)),
     );
-    const [signature] = await signer.sign(txBytes);
     const txSignature = u8aConcat(
       DOT_TYPE_PREFIX.ed25519,
       bufferToU8a(signature),
     );
+    const txSignatureHex = bufferUtils.bytesToHex(txSignature);
     const txid = '';
-    const rawTx = ''; // build rawTx on high level which requires network
+    const rawTx = await serializeSignedTransaction(
+      unsignedTx.encodedTx as IEncodedTxDot,
+      txSignatureHex,
+    );
     return {
       encodedTx: unsignedTx.encodedTx,
       txid,
       rawTx,
-      signature: hexUtils.addHexPrefix(bufferUtils.bytesToHex(txSignature)),
+      signature: hexUtils.addHexPrefix(txSignatureHex),
     };
   }
 
@@ -145,7 +183,6 @@ export default class CoreChainSoftware extends CoreChainApiBase {
   override async getAddressFromPrivate(
     query: ICoreApiGetAddressQueryImported,
   ): Promise<ICoreApiGetAddressItem> {
-    // throw new Error('Method not implemented.');
     const { privateKeyRaw } = query;
     const privateKey = bufferUtils.toBuffer(privateKeyRaw);
     const pub = this.baseGetCurve(curve).publicFromPrivate(privateKey);
@@ -158,11 +195,18 @@ export default class CoreChainSoftware extends CoreChainApiBase {
   override async getAddressFromPublic(
     query: ICoreApiGetAddressQueryPublicKey,
   ): Promise<ICoreApiGetAddressItem> {
-    // throw new Error('Method not implemented.');
-    const { publicKey } = query;
+    const { publicKey, networkInfo } = query;
+    const pubKeyBytes = bufferUtils.hexToBytes(
+      hexUtils.stripHexPrefix(publicKey),
+    );
     return Promise.resolve({
       address: '',
-      addresses: {},
+      addresses: {
+        [networkInfo.networkId]: encodeAddress(
+          pubKeyBytes,
+          +(networkInfo.addressPrefix ?? 0),
+        ),
+      },
       publicKey,
     });
   }

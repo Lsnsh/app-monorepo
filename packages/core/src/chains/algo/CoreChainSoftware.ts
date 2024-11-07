@@ -1,29 +1,92 @@
-import { ed25519 } from '@onekeyhq/core/src/secret';
-import { OneKeyInternalError } from '@onekeyhq/shared/src/errors';
+import { isArray } from 'lodash';
+
+import { decrypt, ed25519 } from '@onekeyhq/core/src/secret';
+import {
+  NotImplemented,
+  OneKeyInternalError,
+} from '@onekeyhq/shared/src/errors';
 import bufferUtils from '@onekeyhq/shared/src/utils/bufferUtils';
 
 import { CoreChainApiBase } from '../../base/CoreChainApiBase';
+import {
+  ECoreApiExportedSecretKeyType,
+  type ICoreApiGetAddressItem,
+  type ICoreApiGetAddressQueryImported,
+  type ICoreApiGetAddressQueryPublicKey,
+  type ICoreApiGetAddressesQueryHd,
+  type ICoreApiGetAddressesResult,
+  type ICoreApiGetExportedSecretKey,
+  type ICoreApiPrivateKeysMap,
+  type ICoreApiSignBasePayload,
+  type ICoreApiSignTxPayload,
+  type ICurveName,
+  type ISignedTxPro,
+} from '../../types';
 
 import sdkAlgo from './sdkAlgo';
 
 import type { ISdkAlgoEncodedTransaction } from './sdkAlgo';
 import type { IEncodedTxAlgo } from './types';
-import type {
-  ICoreApiGetAddressItem,
-  ICoreApiGetAddressQueryImported,
-  ICoreApiGetAddressQueryPublicKey,
-  ICoreApiGetAddressesQueryHd,
-  ICoreApiGetAddressesResult,
-  ICoreApiPrivateKeysMap,
-  ICoreApiSignBasePayload,
-  ICoreApiSignTxPayload,
-  ICurveName,
-  ISignedTxPro,
-} from '../../types';
+import type { ISigner } from '../../base/ChainSigner';
 
 const curve: ICurveName = 'ed25519';
 
 export default class CoreChainSoftware extends CoreChainApiBase {
+  async _signAlgoTx({
+    encodedTx,
+    signer,
+  }: {
+    encodedTx: IEncodedTxAlgo;
+    signer: ISigner;
+  }) {
+    const transaction = sdkAlgo.Transaction.from_obj_for_encoding(
+      sdkAlgo.decodeObj(
+        Buffer.from(encodedTx, 'base64'),
+      ) as ISdkAlgoEncodedTransaction,
+    );
+
+    const [signature] = await signer.sign(transaction.bytesToSign());
+
+    const txid: string = transaction.txID();
+    const rawTx: string = Buffer.from(
+      sdkAlgo.encodeObj({
+        sig: signature,
+        txn: transaction.get_obj_for_encoding(),
+      }),
+    ).toString('base64');
+    return {
+      txid,
+      rawTx,
+    };
+  }
+
+  override async getExportedSecretKey(
+    query: ICoreApiGetExportedSecretKey,
+  ): Promise<string> {
+    const {
+      networkInfo,
+
+      password,
+      keyType,
+      credentials,
+      addressEncoding,
+    } = query;
+    console.log(
+      'ExportSecretKeys >>>> algo',
+      this.baseGetCredentialsType({ credentials }),
+    );
+
+    const { privateKeyRaw } = await this.baseGetDefaultPrivateKey(query);
+
+    if (!privateKeyRaw) {
+      throw new Error('privateKeyRaw is required');
+    }
+    if (keyType === ECoreApiExportedSecretKeyType.privateKey) {
+      return sdkAlgo.mnemonicFromSeed(decrypt(password, privateKeyRaw));
+    }
+    throw new Error(`SecretKey type not support: ${keyType}`);
+  }
+
   override async getPrivateKeys(
     payload: ICoreApiSignBasePayload,
   ): Promise<ICoreApiPrivateKeysMap> {
@@ -42,21 +105,25 @@ export default class CoreChainSoftware extends CoreChainApiBase {
       curve,
     });
     const encodedTx = unsignedTx.encodedTx as IEncodedTxAlgo;
-    const transaction = sdkAlgo.Transaction.from_obj_for_encoding(
-      sdkAlgo.decodeObj(
-        Buffer.from(encodedTx, 'base64'),
-      ) as ISdkAlgoEncodedTransaction,
-    );
 
-    const [signature] = await signer.sign(transaction.bytesToSign());
+    if (isArray(encodedTx)) {
+      const signedTxs = await Promise.all(
+        encodedTx.map((tx) =>
+          this._signAlgoTx({
+            encodedTx: tx,
+            signer,
+          }),
+        ),
+      );
 
-    const txid: string = transaction.txID();
-    const rawTx: string = Buffer.from(
-      sdkAlgo.encodeObj({
-        sig: signature,
-        txn: transaction.get_obj_for_encoding(),
-      }),
-    ).toString('base64');
+      return {
+        encodedTx: unsignedTx.encodedTx,
+        txid: signedTxs.map((tx) => tx.txid).join(','),
+        rawTx: signedTxs.map((tx) => tx.rawTx).join(','),
+      };
+    }
+
+    const { txid, rawTx } = await this._signAlgoTx({ encodedTx, signer });
     return {
       encodedTx: unsignedTx.encodedTx,
       txid,
@@ -65,7 +132,7 @@ export default class CoreChainSoftware extends CoreChainApiBase {
   }
 
   override async signMessage(): Promise<string> {
-    throw new Error('Method not implemented.');
+    throw new NotImplemented();
   }
 
   override async getAddressFromPrivate(

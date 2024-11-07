@@ -1,6 +1,10 @@
 require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
 require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
 
+# react-native-permissions
+require File.join(File.dirname(`node --print "require.resolve('react-native-permissions/package.json')"`), "scripts/setup")
+
+
 require 'json'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
 
@@ -12,6 +16,32 @@ install! 'cocoapods',
   :deterministic_uuids => false
 
 prepare_react_native_project!
+
+# react-native-permissions
+setup_permissions([
+  # 'AppTrackingTransparency',
+  'Bluetooth',
+  # 'Calendars',
+  # 'CalendarsWriteOnly',
+  # 'Camera',
+  # 'Contacts',
+  # 'FaceID',
+  # 'LocationAccuracy',
+  # 'LocationAlways',
+  # 'LocationWhenInUse',
+  # 'MediaLibrary',
+  # 'Microphone',
+  # 'Motion',
+  # 'Notifications',
+  # 'PhotoLibrary',
+  # 'PhotoLibraryAddOnly',
+  # 'Reminders',
+  # 'Siri',
+  # 'SpeechRecognition',
+  # 'StoreKit',
+])
+
+$RNFirebaseAsStaticFramework = true
 
 # If you are using a `react-native-flipper` your iOS build will fail when `NO_FLIPPER=1` is set.
 # because `react-native-flipper` depends on (FlipperKit,...), which will be excluded. To fix this,
@@ -25,17 +55,17 @@ prepare_react_native_project!
 # }
 # ```
 flipper_config = FlipperConfiguration.disabled
-if ENV['NO_FLIPPER'] == '1' then
-  # Explicitly disabled through environment variables
-  flipper_config = FlipperConfiguration.disabled
-elsif podfile_properties.key?('ios.flipper') then
-  # Configure Flipper in Podfile.properties.json
-  if podfile_properties['ios.flipper'] == 'true' then
-    flipper_config = FlipperConfiguration.enabled(["Debug"])
-  elsif podfile_properties['ios.flipper'] != 'false' then
-    flipper_config = FlipperConfiguration.enabled(["Debug"], { 'Flipper' => podfile_properties['ios.flipper'] })
-  end
-end
+# if ENV['NO_FLIPPER'] == '1' then
+#   # Explicitly disabled through environment variables
+#   flipper_config = FlipperConfiguration.disabled
+# elsif podfile_properties.key?('ios.flipper') then
+#   # Configure Flipper in Podfile.properties.json
+#   if podfile_properties['ios.flipper'] == 'true' then
+#     flipper_config = FlipperConfiguration.enabled(["Debug"])
+#   elsif podfile_properties['ios.flipper'] != 'false' then
+#     flipper_config = FlipperConfiguration.enabled(["Debug"], { 'Flipper' => podfile_properties['ios.flipper'] })
+#   end
+# end
 
 target 'OneKeyWallet' do
   use_expo_modules!
@@ -43,6 +73,7 @@ target 'OneKeyWallet' do
 
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+  use_frameworks! :linkage => :static
 
   # Flags change depending on the env values.
   flags = get_default_flags()
@@ -75,12 +106,32 @@ target 'OneKeyWallet' do
       end
     end
     installer.pods_project.targets.each do |target|
+      # https://github.com/mockingbot/react-native-zip-archive/issues/307
+      # error: /node_modules/react-native-zip-archive/ios/RNZipArchive.m unsupported option '-G' for target 'arm64-apple-ios14.0-simulator' 
+      if target.name == 'RNZipArchive'
+        target.source_build_phase.files.each do |file|
+          if file.settings && file.settings['COMPILER_FLAGS']
+              file.settings['COMPILER_FLAGS'] = ''
+          end
+        end
+      end
       target.build_configurations.each do |config|
         config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64"
         if config.name == 'Debug'
           config.build_settings["ONLY_ACTIVE_ARCH"] = "NO"
         else
           config.build_settings["ONLY_ACTIVE_ARCH"] = "YES"
+        end
+      end
+    end
+  end
+
+  # https://github.com/teslamotors/react-native-camera-kit/issues/578
+  pre_install do |installer|
+    installer.pod_targets.each do |pod|
+      if pod.name.eql?('ReactNativeCameraKit')
+        def pod.build_type
+          Pod::BuildType.static_library
         end
       end
     end
@@ -93,4 +144,7 @@ target 'OneKeyWallet' do
       Pod::UI.warn e
     end
   end
+
+  pod 'SDWebImageWebPCoder', '0.8.5'
+
 end

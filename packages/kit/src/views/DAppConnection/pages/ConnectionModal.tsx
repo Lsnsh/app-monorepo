@@ -1,11 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { isNumber } from 'lodash';
 import { useIntl } from 'react-intl';
 
 import { Page, Toast } from '@onekeyhq/components';
 import type { IAccountSelectorSelectedAccount } from '@onekeyhq/kit-bg/src/dbs/simple/entity/SimpleDbEntityAccountSelector';
-import type { IConnectionAccountInfo } from '@onekeyhq/shared/types/dappConnection';
-import { EHostSecurityLevel } from '@onekeyhq/shared/types/discovery';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
+import {
+  EDAppModalPageStatus,
+  type IConnectionAccountInfo,
+} from '@onekeyhq/shared/types/dappConnection';
 
 import backgroundApiProxy from '../../../background/instance/backgroundApiProxy';
 import useDappApproveAction from '../../../hooks/useDappApproveAction';
@@ -18,7 +23,10 @@ import {
 } from '../components/DAppRequestLayout';
 import { useRiskDetection } from '../hooks/useRiskDetection';
 
+import DappOpenModalPage from './DappOpenModalPage';
+
 import type { IAccountSelectorActiveAccountInfo } from '../../../states/jotai/contexts/accountSelector';
+import type { IConnectedAccountInfoChangedParams } from '../components/DAppAccountList';
 import type { IHandleAccountChanged } from '../hooks/useHandleAccountChanged';
 
 function ConnectionModal() {
@@ -30,9 +38,9 @@ function ConnectionModal() {
     closeWindowAfterResolved: true,
   });
   const {
+    showContinueOperate,
     continueOperate,
     setContinueOperate,
-    canContinueOperate,
     riskLevel,
     urlSecurityInfo,
   } = useRiskDetection({ origin: $sourceInfo?.origin ?? '' });
@@ -42,6 +50,9 @@ function ConnectionModal() {
 
   const [rawSelectedAccount, setRawSelectedAccount] =
     useState<IAccountSelectorSelectedAccount | null>(null);
+
+  const [connectedAccountInfo, setConnectedAccountInfo] =
+    useState<IConnectedAccountInfoChangedParams | null>(null);
 
   const handleAccountChanged = useCallback<IHandleAccountChanged>(
     ({ activeAccount, selectedAccount: rawSelectedAccountData }) => {
@@ -55,24 +66,57 @@ function ConnectionModal() {
     [],
   );
 
+  const subtitle = useMemo(() => {
+    if (!selectedAccount?.network?.name) {
+      return '';
+    }
+    return intl.formatMessage(
+      {
+        id: ETranslations.dapp_connect_allow_this_site_to_access,
+      },
+      {
+        chain: selectedAccount?.network?.name ?? '',
+      },
+    );
+  }, [selectedAccount?.network?.name, intl]);
+
   const confirmDisabled = useMemo(() => {
-    if (!canContinueOperate) {
+    if (!continueOperate) {
       return true;
     }
     if (!selectedAccount?.account?.address) {
+      if (selectedAccount?.account?.addressDetail.isValid) {
+        return false;
+      }
       return true;
     }
     return false;
-  }, [selectedAccount, canContinueOperate]);
+  }, [selectedAccount, continueOperate]);
 
   const onApproval = useCallback(
-    async (close: () => void) => {
+    async (close?: (extra?: { flag?: string }) => void) => {
       if (!$sourceInfo?.scope) {
         Toast.error({ title: 'no injected scope' });
+        if ($sourceInfo) {
+          defaultLogger.discovery.dapp.dappUse({
+            dappName: $sourceInfo?.hostname,
+            dappDomain: $sourceInfo?.origin,
+            action: 'ConnectWallet',
+            network: selectedAccount?.network?.name,
+            failReason: 'no injected scope',
+          });
+        }
         return;
       }
       if (!selectedAccount || !selectedAccount.account) {
         Toast.error({ title: 'no account' });
+        defaultLogger.discovery.dapp.dappUse({
+          dappName: $sourceInfo?.hostname,
+          dappDomain: $sourceInfo?.origin,
+          action: 'ConnectWallet',
+          network: selectedAccount?.network?.name,
+          failReason: 'no account',
+        });
         return;
       }
       const {
@@ -94,65 +138,93 @@ function ConnectionModal() {
         focusedWallet: rawSelectedAccount?.focusedWallet,
         othersWalletAccountId: rawSelectedAccount?.othersWalletAccountId,
       };
-      await serviceDApp.saveConnectionSession({
-        origin: $sourceInfo?.origin,
-        accountsInfo: [accountInfo],
-        storageType: 'injectedProvider',
-      });
+      if (connectedAccountInfo?.existConnectedAccount) {
+        if (!isNumber(connectedAccountInfo?.num)) {
+          dappApprove.reject();
+          defaultLogger.discovery.dapp.dappUse({
+            dappName: $sourceInfo.hostname,
+            dappDomain: $sourceInfo?.origin,
+            action: 'ConnectWallet',
+            network: network?.name,
+            failReason: 'no accountSelectorNum',
+          });
+          throw new Error('no accountSelectorNum');
+        }
+        await serviceDApp.updateConnectionSession({
+          origin: $sourceInfo?.origin,
+          updatedAccountInfo: accountInfo,
+          storageType: 'injectedProvider',
+          accountSelectorNum: connectedAccountInfo.num,
+        });
+      } else {
+        await serviceDApp.saveConnectionSession({
+          origin: $sourceInfo?.origin,
+          accountsInfo: [accountInfo],
+          storageType: 'injectedProvider',
+        });
+      }
       await dappApprove.resolve({
-        close,
+        close: () => {
+          close?.({ flag: EDAppModalPageStatus.Confirmed });
+        },
         result: accountInfo,
       });
       Toast.success({
-        title: intl.formatMessage({
-          id: 'content__connected',
-        }),
+        title: intl.formatMessage({ id: ETranslations.global_connected }),
+      });
+      defaultLogger.discovery.dapp.dappUse({
+        dappName: $sourceInfo.hostname,
+        dappDomain: $sourceInfo?.origin,
+        action: 'ConnectWallet',
+        network: network?.name,
       });
     },
     [
       intl,
       dappApprove,
-      $sourceInfo?.origin,
-      $sourceInfo?.scope,
+      $sourceInfo,
       serviceDApp,
       selectedAccount,
       rawSelectedAccount,
+      connectedAccountInfo,
     ],
   );
 
   return (
-    <Page scrollEnabled>
-      <Page.Header headerShown={false} />
-      <Page.Body>
-        <DAppRequestLayout
-          title="Connection Request"
-          origin={$sourceInfo?.origin ?? ''}
-          urlSecurityInfo={urlSecurityInfo}
-        >
-          <DAppAccountListStandAloneItem
-            handleAccountChanged={handleAccountChanged}
+    <DappOpenModalPage dappApprove={dappApprove}>
+      <>
+        <Page.Header headerShown={false} />
+        <Page.Body>
+          <DAppRequestLayout
+            title={intl.formatMessage({
+              id: ETranslations.dapp_connect_connection_request,
+            })}
+            subtitle={subtitle}
+            origin={$sourceInfo?.origin ?? ''}
+            urlSecurityInfo={urlSecurityInfo}
+          >
+            <DAppAccountListStandAloneItem
+              handleAccountChanged={handleAccountChanged}
+              onConnectedAccountInfoChanged={setConnectedAccountInfo}
+            />
+            <DAppRequestedPermissionContent />
+          </DAppRequestLayout>
+        </Page.Body>
+        <Page.Footer>
+          <DAppRequestFooter
+            continueOperate={continueOperate}
+            setContinueOperate={(value) => setContinueOperate(!!value)}
+            onConfirm={onApproval}
+            onCancel={() => dappApprove.reject()}
+            confirmButtonProps={{
+              disabled: confirmDisabled,
+            }}
+            showContinueOperateCheckbox={showContinueOperate}
+            riskLevel={riskLevel}
           />
-          <DAppRequestedPermissionContent />
-        </DAppRequestLayout>
-      </Page.Body>
-      <Page.Footer>
-        <DAppRequestFooter
-          continueOperate={continueOperate}
-          setContinueOperate={(value) => setContinueOperate(!!value)}
-          onConfirm={onApproval}
-          onCancel={() => {
-            dappApprove.reject();
-          }}
-          confirmButtonProps={{
-            disabled: confirmDisabled,
-          }}
-          showContinueOperateCheckbox={
-            riskLevel !== EHostSecurityLevel.Security
-          }
-          riskLevel={riskLevel}
-        />
-      </Page.Footer>
-    </Page>
+        </Page.Footer>
+      </>
+    </DappOpenModalPage>
   );
 }
 

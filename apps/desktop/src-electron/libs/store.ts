@@ -1,6 +1,8 @@
 import { safeStorage } from 'electron';
-import logger from 'electron-log';
+import logger from 'electron-log/main';
 import Store from 'electron-store';
+
+import type { ILocaleSymbol } from '@onekeyhq/shared/src/locale';
 
 const store = new Store({ name: 'OneKey' });
 
@@ -17,7 +19,10 @@ export type IUpdateSettings = {
 const configKeys = {
   WinBounds: 'winBounds',
   UpdateSettings: 'updateSettings',
-  EncryptedData: 'OneKey_EncryptedData',
+  DevTools: 'devTools',
+  Theme: 'theme',
+  EncryptedData: 'EncryptedData',
+  Language: 'language',
 };
 
 export const getUpdateSettings = (): IUpdateSettings =>
@@ -28,6 +33,22 @@ export const getUpdateSettings = (): IUpdateSettings =>
 export const setUpdateSettings = (updateSettings: IUpdateSettings): void => {
   store.set(configKeys.UpdateSettings, updateSettings);
 };
+
+export const getDevTools = () => store.get(configKeys.DevTools, false);
+
+export const setDevTools = (devTools: boolean) => {
+  store.set(configKeys.DevTools, devTools);
+};
+
+export const getTheme = () => store.get(configKeys.Theme, 'system') as string;
+
+export const setTheme = (theme: string) => store.set(configKeys.Theme, theme);
+
+export const getLanguage = () =>
+  store.get(configKeys.Language, 'system') as ILocaleSymbol;
+
+export const setLanguage = (lang: string) =>
+  store.set(configKeys.Language, lang);
 
 export const getWinBounds = (): Electron.Rectangle =>
   store.get(configKeys.WinBounds, {}) as Electron.Rectangle;
@@ -58,7 +79,7 @@ export const getSecureItem = (key: string) => {
       const result = safeStorage.decryptString(Buffer.from(value, 'hex'));
       return result;
     } catch (e) {
-      logger.error(`failed to decrypt ${key}`, e);
+      logger.error(`failed to decrypt ${key}`);
       return undefined;
     }
   }
@@ -78,7 +99,7 @@ export const setSecureItem = (key: string, value: string): void => {
     items[key] = safeStorage.encryptString(value).toString('hex');
     store.set(configKeys.EncryptedData, items);
   } catch (e) {
-    logger.error(`failed to encrypt ${key} ${value}`, e);
+    logger.error(`failed to encrypt ${key}`);
   }
 };
 

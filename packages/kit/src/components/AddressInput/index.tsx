@@ -10,25 +10,33 @@ import {
 
 import { useFormContext } from 'react-hook-form';
 import { useIntl } from 'react-intl';
+import { useDebouncedCallback } from 'use-debounce';
 
 import type { TextArea } from '@onekeyhq/components';
 import {
   Badge,
   Icon,
   IconButton,
+  Popover,
   Select,
+  SizableText,
   Spinner,
   Stack,
   XStack,
 } from '@onekeyhq/components';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
-import { useDebounce } from '@onekeyhq/kit/src/hooks/useDebounce';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import accountUtils from '@onekeyhq/shared/src/utils/accountUtils';
+import networkUtils from '@onekeyhq/shared/src/utils/networkUtils';
+import { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
 import type {
+  EInputAddressChangeType,
   IAddressInteractionStatus,
   IAddressValidateStatus,
+  IQueryCheckAddressArgs,
 } from '@onekeyhq/shared/types/address';
 
+import { usePromiseResult } from '../../hooks/usePromiseResult';
 import { BaseInput } from '../BaseInput';
 
 import { ClipboardPlugin } from './plugins/clipboard';
@@ -46,6 +54,7 @@ const ResolvedAddress: FC<IResolvedAddressProps> = ({
   options,
   onChange,
 }) => {
+  const intl = useIntl();
   if (options.length <= 1) {
     return (
       <Badge badgeSize="sm">
@@ -59,8 +68,12 @@ const ResolvedAddress: FC<IResolvedAddressProps> = ({
   }
   return (
     <Select
-      title="Choose an Address"
-      placeholder="Choose an Address"
+      title={intl.formatMessage({
+        id: ETranslations.send_ens_choose_address_title,
+      })}
+      placeholder={intl.formatMessage({
+        id: ETranslations.send_ens_choose_address_title,
+      })}
       renderTrigger={() => (
         <Badge badgeSize="sm" userSelect="none">
           <Badge.Text>
@@ -83,26 +96,93 @@ const ResolvedAddress: FC<IResolvedAddressProps> = ({
 
 type IAddressInteractionStatusProps = {
   status?: IAddressInteractionStatus;
+  networkId: string;
 };
 
 const AddressInteractionStatus: FC<IAddressInteractionStatusProps> = ({
   status,
+  networkId,
 }) => {
+  const intl = useIntl();
+  const { result } = usePromiseResult(
+    () => backgroundApiProxy.serviceNetwork.getNetworkSafe({ networkId }),
+    [networkId],
+  );
   if (status === 'not-interacted') {
     return (
-      <Badge badgeType="warning" badgeSize="sm">
-        First Transfer
-      </Badge>
+      <Popover
+        title={intl.formatMessage({
+          id: ETranslations.send_label_first_transfer,
+        })}
+        renderTrigger={
+          <Badge badgeType="warning" badgeSize="sm">
+            {intl.formatMessage({
+              id: ETranslations.send_label_first_transfer,
+            })}
+          </Badge>
+        }
+        renderContent={() => (
+          <Stack gap="$4" p="$4">
+            <SizableText size="$bodyMd">
+              {intl.formatMessage(
+                {
+                  id: ETranslations.address_input_first_transfer_popover,
+                },
+                { network: result?.name ?? '' },
+              )}
+            </SizableText>
+          </Stack>
+        )}
+      />
     );
   }
   if (status === 'interacted') {
     return (
-      <Badge badgeType="success" badgeSize="sm">
-        Transferred
-      </Badge>
+      <Popover
+        title={intl.formatMessage({
+          id: ETranslations.send_label_transferred,
+        })}
+        renderTrigger={
+          <Badge badgeType="success" badgeSize="sm">
+            {intl.formatMessage({ id: ETranslations.send_label_transferred })}
+          </Badge>
+        }
+        renderContent={() => (
+          <Stack gap="$4" p="$4">
+            <SizableText size="$bodyMd">
+              {intl.formatMessage({
+                id: ETranslations.address_input_transferred_popover,
+              })}
+            </SizableText>
+          </Stack>
+        )}
+      />
     );
   }
   return null;
+};
+
+const AddressContractStatus = ({ isContract }: { isContract?: boolean }) => {
+  const intl = useIntl();
+  return isContract ? (
+    <Popover
+      title={intl.formatMessage({ id: ETranslations.global_contract })}
+      renderTrigger={
+        <Badge badgeType="critical" badgeSize="sm">
+          {intl.formatMessage({ id: ETranslations.global_contract })}
+        </Badge>
+      }
+      renderContent={() => (
+        <Stack gap="$4" p="$4">
+          <SizableText size="$bodyMd">
+            {intl.formatMessage({
+              id: ETranslations.address_input_contract_popover,
+            })}
+          </SizableText>
+        </Stack>
+      )}
+    />
+  ) : null;
 };
 
 export type IAddressInputValue = {
@@ -128,17 +208,26 @@ type IAddressInputProps = Omit<
 
   // plugins options for control button display
   clipboard?: boolean;
-  scan?: boolean;
+  scan?: { sceneName: EAccountSelectorSceneName };
   contacts?: boolean;
-  accountSelector?: { num: number; onBeforeAccountSelectorOpen?: () => void };
+  accountSelector?: {
+    num: number;
+    onBeforeAccountSelectorOpen?: () => void;
+    clearNotMatch?: boolean;
+  };
 
   // query options for control query behavior
   enableNameResolve?: boolean;
   enableAddressBook?: boolean;
   enableWalletName?: boolean;
 
-  accountId?: string; // for check address interaction
-  enableAddressInteractionStatus?: boolean;
+  accountId?: string;
+
+  enableAddressContract?: boolean;
+  enableAddressInteractionStatus?: boolean; // for check address interaction
+  enableVerifySendFundToSelf?: boolean; // To verify whether funds can be sent to one's own address.
+
+  onInputTypeChange?: (type: EInputAddressChangeType) => void;
 };
 
 export type IAddressQueryResult = {
@@ -149,6 +238,7 @@ export type IAddressQueryResult = {
   resolveAddress?: string;
   resolveOptions?: string[];
   addressInteractionStatus?: IAddressInteractionStatus;
+  isContract?: boolean;
 };
 
 type IAddressInputBadgeGroupProps = {
@@ -156,10 +246,11 @@ type IAddressInputBadgeGroupProps = {
   result?: IAddressQueryResult;
   setResolveAddress?: (address: string) => void;
   onRefresh?: () => void;
+  networkId: string;
 };
 
 function AddressInputBadgeGroup(props: IAddressInputBadgeGroupProps) {
-  const { loading, result, setResolveAddress, onRefresh } = props;
+  const { loading, result, setResolveAddress, onRefresh, networkId } = props;
   if (loading) {
     return <Spinner />;
   }
@@ -175,19 +266,19 @@ function AddressInputBadgeGroup(props: IAddressInputBadgeGroupProps) {
   }
   if (result) {
     return (
-      <XStack space="$2" flex={1} flexWrap="wrap">
+      <XStack gap="$2" my="$-1" flex={1} flexWrap="wrap">
         {result.walletAccountName ? (
-          <Badge badgeType="success" badgeSize="sm" mb="$1">
+          <Badge badgeType="success" badgeSize="sm" my="$0.5">
             {result.walletAccountName}
           </Badge>
         ) : null}
         {result.addressBookName ? (
-          <Badge badgeType="success" badgeSize="sm" mb="$1">
+          <Badge badgeType="success" badgeSize="sm" my="$0.5">
             {result.addressBookName}
           </Badge>
         ) : null}
         {result.resolveAddress ? (
-          <Stack mb="$1">
+          <Stack my="$0.5">
             <ResolvedAddress
               value={result.resolveAddress}
               options={result.resolveOptions ?? []}
@@ -195,14 +286,30 @@ function AddressInputBadgeGroup(props: IAddressInputBadgeGroupProps) {
             />
           </Stack>
         ) : null}
-        <Stack mb="$1">
-          <AddressInteractionStatus status={result.addressInteractionStatus} />
-        </Stack>
+        <XStack my="$0.5" gap="$1">
+          <AddressInteractionStatus
+            status={result.addressInteractionStatus}
+            networkId={networkId}
+          />
+          <AddressContractStatus isContract={result.isContract} />
+        </XStack>
       </XStack>
     );
   }
   return null;
 }
+
+export const createValidateAddressRule =
+  ({ defaultErrorMessage }: { defaultErrorMessage: string }) =>
+  (value: IAddressInputValue) => {
+    if (value.pending) {
+      return;
+    }
+    if (!value.resolved) {
+      return value.validateError?.message ?? defaultErrorMessage;
+    }
+    return undefined;
+  };
 
 export function AddressInput(props: IAddressInputProps) {
   const {
@@ -212,7 +319,7 @@ export function AddressInput(props: IAddressInputProps) {
     networkId,
     placeholder,
     clipboard = true,
-    scan = true,
+    scan = { sceneName: EAccountSelectorSceneName.home },
     contacts,
     accountSelector,
     enableNameResolve = true,
@@ -220,6 +327,9 @@ export function AddressInput(props: IAddressInputProps) {
     enableWalletName,
     accountId,
     enableAddressInteractionStatus,
+    enableAddressContract,
+    enableVerifySendFundToSelf,
+    onInputTypeChange,
     ...rest
   } = props;
   const intl = useIntl();
@@ -228,7 +338,6 @@ export function AddressInput(props: IAddressInputProps) {
   const [loading, setLoading] = useState(false);
   const textRef = useRef('');
   const rawAddress = watch([name, 'raw'].join('.'));
-  const debounceText = useDebounce(inputText, 300, { trailing: true });
 
   const [queryResult, setQueryResult] = useState<IAddressQueryResult>({});
   const [refreshNum, setRefreshNum] = useState(1);
@@ -239,9 +348,11 @@ export function AddressInput(props: IAddressInputProps) {
 
   const onChangeText = useCallback(
     (text: string) => {
-      textRef.current = text;
-      setInputText(text);
-      onChange?.({ raw: text, pending: true });
+      if (textRef.current !== text) {
+        textRef.current = text;
+        setInputText(text);
+        onChange?.({ raw: text, pending: text.length > 0 });
+      }
     },
     [onChange],
   );
@@ -254,42 +365,73 @@ export function AddressInput(props: IAddressInputProps) {
     }
   }, [rawAddress, onChangeText]);
 
-  useEffect(() => {
-    async function main() {
-      if (!debounceText) {
+  const queryAddress = useDebouncedCallback(
+    async (params: IQueryCheckAddressArgs) => {
+      if (!params.address) {
         setQueryResult({});
         return;
       }
       setLoading(true);
       try {
         const result =
-          await backgroundApiProxy.serviceAccountProfile.queryAddress({
-            networkId,
-            accountId,
-            address: debounceText,
-            enableNameResolve,
-            enableAddressBook,
-            enableWalletName,
-            enableAddressInteractionStatus,
-          });
+          await backgroundApiProxy.serviceAccountProfile.queryAddress(params);
         if (result.input === textRef.current) {
           setQueryResult(result);
         }
       } finally {
         setLoading(false);
       }
-    }
-    void main();
+    },
+    300,
+  );
+
+  useEffect(() => {
+    void queryAddress({
+      address: inputText,
+      networkId,
+      accountId,
+      enableAddressBook,
+      enableAddressInteractionStatus,
+      enableNameResolve,
+      enableWalletName,
+      enableVerifySendFundToSelf,
+      enableAddressContract,
+    });
   }, [
-    debounceText,
+    inputText,
     networkId,
     accountId,
     enableNameResolve,
     enableAddressBook,
     enableWalletName,
     enableAddressInteractionStatus,
+    enableAddressContract,
+    enableVerifySendFundToSelf,
     refreshNum,
+    queryAddress,
   ]);
+
+  const getValidateMessage = useCallback(
+    (status?: Exclude<IAddressValidateStatus, 'valid'>) => {
+      if (!status) return;
+      const message: Record<
+        Exclude<IAddressValidateStatus, 'valid'>,
+        string
+      > = {
+        'unknown': intl.formatMessage({
+          id: ETranslations.send_check_request_error,
+        }),
+        'prohibit-send-to-self': intl.formatMessage({
+          id: ETranslations.send_cannot_send_to_self,
+        }),
+        'invalid': intl.formatMessage({
+          id: ETranslations.send_address_invalid,
+        }),
+      };
+      return message[status];
+    },
+    [intl],
+  );
 
   useEffect(() => {
     if (Object.keys(queryResult).length === 0) return;
@@ -297,7 +439,7 @@ export function AddressInput(props: IAddressInputProps) {
       clearErrors(name);
       onChange?.({
         raw: queryResult.input,
-        resolved: queryResult.resolveAddress ?? queryResult.input,
+        resolved: queryResult.resolveAddress ?? queryResult.input?.trim(),
         pending: false,
       });
     } else {
@@ -306,14 +448,19 @@ export function AddressInput(props: IAddressInputProps) {
         pending: false,
         validateError: {
           type: queryResult.validStatus,
-          message:
-            queryResult.validStatus === 'unknown'
-              ? 'Check request error, please refresh again'
-              : intl.formatMessage({ id: 'form__address_invalid' }),
+          message: getValidateMessage(queryResult.validStatus),
         },
       });
     }
-  }, [queryResult, intl, clearErrors, setError, name, onChange]);
+  }, [
+    queryResult,
+    intl,
+    clearErrors,
+    setError,
+    name,
+    onChange,
+    getValidateMessage,
+  ]);
 
   const AddressInputExtension = useMemo(
     () => (
@@ -322,33 +469,40 @@ export function AddressInput(props: IAddressInputProps) {
         flexWrap="nowrap"
         alignItems="center"
       >
-        <XStack space="$2" flex={1}>
+        <XStack gap="$2" flex={1}>
           <AddressInputBadgeGroup
             loading={loading}
             result={queryResult}
             setResolveAddress={setResolveAddress}
             onRefresh={onRefresh}
+            networkId={networkId}
           />
         </XStack>
-        <XStack space="$6">
+        <XStack gap="$6">
           {clipboard ? (
             <ClipboardPlugin
+              onInputTypeChange={onInputTypeChange}
               onChange={onChangeText}
               testID={`${rest.testID ?? ''}-clip`}
             />
           ) : null}
           {scan ? (
             <ScanPlugin
+              onInputTypeChange={onInputTypeChange}
+              sceneName={scan.sceneName}
               onChange={onChangeText}
               testID={`${rest.testID ?? ''}-scan`}
             />
           ) : null}
           {contacts || accountSelector ? (
             <SelectorPlugin
+              onInputTypeChange={onInputTypeChange}
               onChange={onChangeText}
               networkId={networkId}
+              accountId={accountId}
               num={accountSelector?.num}
               currentAddress={inputText}
+              clearNotMatch={accountSelector?.clearNotMatch}
               onBeforeAccountSelectorOpen={
                 accountSelector?.onBeforeAccountSelectorOpen
               }
@@ -360,29 +514,37 @@ export function AddressInput(props: IAddressInputProps) {
     ),
     [
       loading,
-      onChangeText,
+      queryResult,
+      setResolveAddress,
+      onRefresh,
       clipboard,
+      onInputTypeChange,
+      onChangeText,
+      rest.testID,
       scan,
       contacts,
       accountSelector,
-      queryResult,
-      setResolveAddress,
       networkId,
-      rest.testID,
-      onRefresh,
+      accountId,
       inputText,
     ],
   );
+
+  const getAddressInputPlaceholder = useMemo(() => {
+    if (networkUtils.isLightningNetworkByNetworkId(networkId)) {
+      return intl.formatMessage({
+        id: ETranslations.form_recipient_ln_placeholder,
+      });
+    }
+
+    return intl.formatMessage({ id: ETranslations.send_to_placeholder });
+  }, [intl, networkId]);
 
   return (
     <BaseInput
       value={inputText}
       onChangeText={onChangeText}
-      placeholder={
-        placeholder ??
-        // intl.formatMessage({ id: 'form__address_and_domain_placeholder' })
-        'Enter address or domain name'
-      }
+      placeholder={placeholder ?? getAddressInputPlaceholder}
       extension={AddressInputExtension}
       {...rest}
     />

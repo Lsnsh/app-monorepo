@@ -15,12 +15,16 @@ import {
   infoDark,
   neutral,
   neutralDark,
+  pink,
+  pinkDark,
   primary,
   primaryDark,
   light as primitive,
   blackA as primitiveBlackA,
   dark as primitiveDark,
   whiteA as primitiveWhiteA,
+  purple,
+  purpleDark,
   success,
   successDark,
 } from './colors';
@@ -63,7 +67,7 @@ const font = createFont({
     headingXs: 16,
     headingSm: 20,
     headingMd: 24,
-    headingLg: 28,
+    headingLg: 24,
     headingXl: 28,
     heading2xl: 32,
     heading3xl: 36,
@@ -133,11 +137,16 @@ const font = createFont({
 const animations = createAnimations({
   '50ms': {
     type: 'timing',
-    duration: 100,
+    duration: 50,
   },
   '100ms': {
     type: 'timing',
     duration: 100,
+  },
+  repeat: {
+    type: 'timing',
+    duration: 300,
+    repeat: 2,
   },
   quick: {
     type: 'spring',
@@ -176,6 +185,8 @@ const lightColors = {
   ...caution,
   ...info,
   ...critical,
+  ...purple,
+  ...pink,
   bgApp: '#FFFFFF',
   bg: '#FFFFFF',
   bgReverse: '#1b1b1b',
@@ -269,6 +280,8 @@ const darkColors: typeof lightColors = {
   ...cautionDark,
   ...infoDark,
   ...criticalDark,
+  ...purpleDark,
+  ...pinkDark,
   bgApp: '#0f0f0f',
   bg: '#1b1b1b',
   bgReverse: '#ffffff',
@@ -420,6 +433,7 @@ const mergedTokens = createTokens({
     96: 384,
     100: 400,
     160: 640,
+    180: 720,
     sideBarWidth: 208,
   },
   radius: {
@@ -450,15 +464,19 @@ const mergedTokens = createTokens({
     4: 16,
     5: 20,
     6: 24,
+    7: 28,
     8: 32,
     9: 36,
     10: 40,
+    11: 44,
     12: 48,
     16: 64,
     20: 80,
     24: 96,
     28: 112,
     32: 128,
+    46: 184,
+    54: 216,
     '-px': -1,
     '-0.5': -2,
     '-1': -4,
@@ -574,7 +592,11 @@ declare module 'tamagui' {
   // override groupNames
   // eslint-disable-next-line @typescript-eslint/naming-convention
   interface TypeOverride {
-    groupNames(): 'nftItem';
+    groupNames():
+      | 'nftItem'
+      | 'card'
+      | 'sidebarClearButton'
+      | 'sidebarBrowserDivider';
   }
 }
 

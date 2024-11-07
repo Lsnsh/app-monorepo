@@ -1,28 +1,33 @@
-import { Suspense, useCallback, useEffect } from 'react';
+import { Suspense, useCallback, useEffect, useRef } from 'react';
 
 import { isNil } from 'lodash';
+import { useIntl } from 'react-intl';
 
 import { Dialog, Spinner } from '@onekeyhq/components';
+import type { IDialogShowProps } from '@onekeyhq/components/src/composite/Dialog/type';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import { EPasswordPromptType } from '@onekeyhq/kit-bg/src/services/ServicePassword/types';
 import { usePasswordPromptPromiseTriggerAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms/password';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 
 import PasswordSetupContainer from './PasswordSetupContainer';
 import PasswordVerifyContainer from './PasswordVerifyContainer';
 
 const PasswordVerifyPromptMount = () => {
+  const intl = useIntl();
+
   const [{ passwordPromptPromiseTriggerData }] =
     usePasswordPromptPromiseTriggerAtom();
   const onClose = useCallback((id: number) => {
-    void backgroundApiProxy.servicePassword.rejectPasswordPromptDialog(id, {
-      message: 'User Cancelled Password Verify',
-    });
+    void backgroundApiProxy.servicePassword.cancelPasswordPromptDialog(id);
   }, []);
+
+  const dialogRef = useRef<ReturnType<typeof Dialog.show> | null>(null);
 
   const showPasswordSetupPrompt = useCallback(
     (id: number) => {
-      const dialog = Dialog.show({
-        title: 'Setup Password',
+      dialogRef.current = Dialog.show({
+        title: intl.formatMessage({ id: ETranslations.global_set_password }),
         onClose() {
           onClose(id);
         },
@@ -36,7 +41,6 @@ const PasswordVerifyPromptMount = () => {
                     password: data,
                   },
                 );
-                void dialog.close();
               }}
             />
           </Suspense>
@@ -44,12 +48,15 @@ const PasswordVerifyPromptMount = () => {
         showFooter: false,
       });
     },
-    [onClose],
+    [intl, onClose],
   );
   const showPasswordVerifyPrompt = useCallback(
-    (id: number) => {
-      const dialog = Dialog.show({
-        title: 'ConfirmPassword',
+    (id: number, dialogProps?: IDialogShowProps) => {
+      dialogRef.current = Dialog.show({
+        ...dialogProps,
+        title: intl.formatMessage({
+          id: ETranslations.enter_password,
+        }),
         onClose() {
           onClose(id);
         },
@@ -63,7 +70,6 @@ const PasswordVerifyPromptMount = () => {
                     password: data,
                   },
                 );
-                void dialog.close();
               }}
             />
           </Suspense>
@@ -71,8 +77,17 @@ const PasswordVerifyPromptMount = () => {
         showFooter: false,
       });
     },
-    [onClose],
+    [intl, onClose],
   );
+
+  const showPasswordSetupPromptRef = useRef(showPasswordSetupPrompt);
+  const showPasswordVerifyPromptRef = useRef(showPasswordVerifyPrompt);
+  if (showPasswordSetupPromptRef.current !== showPasswordSetupPrompt) {
+    showPasswordSetupPromptRef.current = showPasswordSetupPrompt;
+  }
+  if (showPasswordVerifyPromptRef.current !== showPasswordVerifyPrompt) {
+    showPasswordVerifyPromptRef.current = showPasswordVerifyPrompt;
+  }
   useEffect(() => {
     if (
       passwordPromptPromiseTriggerData &&
@@ -82,16 +97,20 @@ const PasswordVerifyPromptMount = () => {
         passwordPromptPromiseTriggerData.type ===
         EPasswordPromptType.PASSWORD_VERIFY
       ) {
-        showPasswordVerifyPrompt(passwordPromptPromiseTriggerData.idNumber);
+        showPasswordVerifyPromptRef.current?.(
+          passwordPromptPromiseTriggerData.idNumber,
+          passwordPromptPromiseTriggerData.dialogProps,
+        );
       } else {
-        showPasswordSetupPrompt(passwordPromptPromiseTriggerData.idNumber);
+        showPasswordSetupPromptRef.current?.(
+          passwordPromptPromiseTriggerData.idNumber,
+        );
       }
+    } else {
+      void dialogRef.current?.close();
     }
-  }, [
-    passwordPromptPromiseTriggerData,
-    showPasswordSetupPrompt,
-    showPasswordVerifyPrompt,
-  ]);
+  }, [passwordPromptPromiseTriggerData]);
+
   return null;
 };
 

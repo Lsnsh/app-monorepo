@@ -25,6 +25,12 @@ const settings: IVaultSettings = {
   hardwareAccountEnabled: true,
   externalAccountEnabled: false,
   watchingAccountEnabled: false,
+  addressBookDisabled: true,
+  copyAddressDisabled: true,
+
+  dappInteractionEnabled: true,
+
+  defaultFeePresetIndex: 0,
 
   isUtxo: false,
   isSingleToken: true,
@@ -32,6 +38,8 @@ const settings: IVaultSettings = {
   nonceRequired: false,
   feeUTXORequired: false,
   editFeeEnabled: false,
+  replaceTxEnabled: false,
+  estimatedFeePollingInterval: 600,
 
   accountDeriveInfo,
   networkInfo: {
@@ -41,6 +49,10 @@ const settings: IVaultSettings = {
     },
   },
   validationRequired: true,
+  hideAmountInputOnFirstEntry: true,
+  hideBlockExplorer: true,
+  ignoreUpdateNativeAmount: true,
+  isNativeTokenContractAddressEmpty: true,
 };
 
 export default Object.freeze(settings);

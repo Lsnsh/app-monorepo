@@ -3,13 +3,13 @@ import { forwardRef, useMemo } from 'react';
 
 import { FlashList } from '@shopify/flash-list';
 import { usePropsAndStyle, useStyle } from '@tamagui/core';
+import { I18nManager, type StyleProp, type ViewStyle } from 'react-native';
 import { getTokenValue } from 'tamagui';
 
-import { View } from '../../optimization';
+import { OptimizationView } from '../../optimization';
 
 import type { FlashListProps, ListRenderItem } from '@shopify/flash-list';
-import type { StackStyleProps, Tokens } from '@tamagui/web/types/types';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type { StackStyle, Tokens } from '@tamagui/web/types/types';
 
 type IListViewRef<T> = FlashList<T>;
 
@@ -23,11 +23,11 @@ type IListViewProps<T> = Omit<
   | 'renderItem'
   | 'estimatedItemSize'
 > &
-  StackStyleProps & {
-    contentContainerStyle?: StackStyleProps;
-    columnWrapperStyle?: StackStyleProps;
-    ListHeaderComponentStyle?: StackStyleProps;
-    ListFooterComponentStyle?: StackStyleProps;
+  StackStyle & {
+    contentContainerStyle?: StackStyle;
+    columnWrapperStyle?: StackStyle;
+    ListHeaderComponentStyle?: StackStyle;
+    ListFooterComponentStyle?: StackStyle;
   } & {
     data: ReadonlyArray<T> | null | undefined;
     renderItem: ListRenderItem<T> | null | undefined;
@@ -76,17 +76,20 @@ function BaseListView<T>(
       resolveValues: 'auto',
     },
   );
-  const itemSize = useMemo(
-    () =>
-      typeof estimatedItemSize === 'number'
-        ? estimatedItemSize
-        : (getTokenValue(estimatedItemSize) as number),
-    [estimatedItemSize],
-  );
+  const itemSize = useMemo<number | undefined>(() => {
+    if (typeof estimatedItemSize === 'undefined') {
+      return undefined;
+    }
+    return typeof estimatedItemSize === 'number'
+      ? estimatedItemSize
+      : (getTokenValue(estimatedItemSize, 'size') as number);
+  }, [estimatedItemSize]);
   return (
     // FlashList doesn't support the style, so we have to wrap it,
     // and we set default flex = 1 just like FlatList
-    <View style={[{ flex: 1, minHeight: 2 }, style as StyleProp<ViewStyle>]}>
+    <OptimizationView
+      style={[{ flex: 1, minHeight: 2 }, style as StyleProp<ViewStyle>]}
+    >
       <FlashList<T>
         ref={ref}
         ListHeaderComponentStyle={listHeaderStyle}
@@ -95,9 +98,10 @@ function BaseListView<T>(
         data={data}
         renderItem={renderItem}
         estimatedItemSize={itemSize}
+        disableAutoLayout={I18nManager.isRTL}
         {...restProps}
       />
-    </View>
+    </OptimizationView>
   );
 }
 

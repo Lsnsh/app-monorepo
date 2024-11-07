@@ -1,39 +1,31 @@
-import type { ILocaleIds } from '@onekeyhq/shared/src/locale';
-import { SingleChainSwapProviders } from '@onekeyhq/shared/types/swap/SwapProvider.constants';
-import type {
-  ESwapProviders,
-  ISwapNetwork,
-  ISwapToken,
-} from '@onekeyhq/shared/types/swap/types';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import type { ISwapNetwork } from '@onekeyhq/shared/types/swap/types';
 import { ESwapTxHistoryStatus } from '@onekeyhq/shared/types/swap/types';
 
 import type { ColorValue } from 'react-native';
 
-export function validateAmountInput(text: string) {
-  const regex = /^$|^0(\.\d{0,6})?$|^[1-9]\d*(\.\d{0,6})?$|^[1-9]\d*\.$|^0\.$/;
+export function validateAmountInput(text: string, decimal?: number) {
+  const regex = new RegExp(
+    `^$|^0(\\.\\d{0,${decimal ?? 6}})?$|^[1-9]\\d*(\\.\\d{0,${
+      decimal ?? 6
+    }})?$|^[1-9]\\d*\\.$|^0\\.$`,
+  );
   if (!regex.test(text)) {
     return false;
   }
   return true;
 }
 
-export function swapTokenPairsSupportedProviders(
-  from: ISwapToken,
-  to: ISwapToken,
-): { providers: string } {
-  const fromProvidersArr = from.providers.split(',');
-  const toProvidersArr = to.providers.split(',');
-  const providers = fromProvidersArr.filter((item) =>
-    toProvidersArr.includes(item),
-  );
-  return {
-    providers: providers.join(','),
-  };
-}
-
-export function isOnlySupportSingleChainProvider(value: ISwapToken) {
-  const providers = value.providers.split(',') as ESwapProviders[];
-  return providers.every((item) => SingleChainSwapProviders.includes(item));
+export function truncateDecimalPlaces(str?: string, decimal?: number) {
+  if (!str || Number.isNaN(str) || !decimal) {
+    return null;
+  }
+  const parts = str.split('.');
+  if (parts.length === 2 && parts[1].length > decimal) {
+    parts[1] = parts[1].substring(0, decimal);
+    return parts.join('.');
+  }
+  return str;
 }
 
 export function moveNetworkToFirst(arr: ISwapNetwork[], networkId: string) {
@@ -41,31 +33,45 @@ export function moveNetworkToFirst(arr: ISwapNetwork[], networkId: string) {
   const index = networks.findIndex((item) => item.networkId === networkId);
   if (index !== -1) {
     const item = networks.splice(index, 1)[0];
-    networks.splice(1, 0, item);
+    networks.splice(0, 0, item);
   }
   return networks;
 }
 
 export function getSwapHistoryStatusTextProps(status: ESwapTxHistoryStatus): {
-  key: ILocaleIds;
+  key: ETranslations;
   color: ColorValue;
 } {
   if (status === ESwapTxHistoryStatus.PENDING) {
     return {
-      key: 'transaction__pending',
+      key: ETranslations.swap_history_status_pending,
       color: '$textCaution',
     };
   }
 
   if (status === ESwapTxHistoryStatus.SUCCESS) {
     return {
-      key: 'transaction__success',
+      key: ETranslations.swap_history_status_success,
       color: '$textSuccess',
     };
   }
 
+  if (status === ESwapTxHistoryStatus.CANCELING) {
+    return {
+      key: ETranslations.swap_history_status_cancelling,
+      color: '$textCaution',
+    };
+  }
+
+  if (status === ESwapTxHistoryStatus.CANCELED) {
+    return {
+      key: ETranslations.swap_history_status_canceled,
+      color: '$textCaution',
+    };
+  }
+
   return {
-    key: 'transaction__failed',
+    key: ETranslations.swap_history_status_failed,
     color: '$textCritical',
   };
 }

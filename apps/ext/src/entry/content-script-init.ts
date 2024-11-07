@@ -25,7 +25,7 @@ import injectedCode from './injected.text-js';
 
 if (process.env.NODE_ENV !== 'production') {
   console.log('==== injected script tag start >>>>>>>', performance.now());
-  console.log('[OneKey RN]: Content script works! ', window.location.href);
+  console.log('[OneKey RN]: Content script works! ', globalThis.location.href);
   console.log('   Must reload extension for modifications to take effect.');
 }
 
@@ -93,9 +93,9 @@ export interface IOneKeyWalletInfo {
 
 if (process.env.NODE_ENV !== 'production') {
   try {
-    if (consts.WALLET_INFO_LOACAL_KEY) {
+    if (consts.WALLET_INFO_LOACAL_KEY_V5) {
       const walletInfo: IOneKeyWalletInfo = JSON.parse(
-        localStorage.getItem(consts.WALLET_INFO_LOACAL_KEY) || '{}',
+        localStorage.getItem(consts.WALLET_INFO_LOACAL_KEY_V5) || '{}',
       );
       console.log(walletInfo);
       if (walletInfo && walletInfo.enableExtContentScriptReloadButton) {

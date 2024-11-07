@@ -2,10 +2,12 @@ import { useCallback, useMemo } from 'react';
 
 import { useIntl } from 'react-intl';
 
-import { Dialog, Input } from '@onekeyhq/components';
+import { Dialog, Input, Portal } from '@onekeyhq/components';
 import type { IDialogProps } from '@onekeyhq/components/src/composite/Dialog/type';
-import { LOCALES_OPTION } from '@onekeyhq/shared/src/locale';
+import { ETranslations, LOCALES_OPTION } from '@onekeyhq/shared/src/locale';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import { RESET_OVERLAY_Z_INDEX } from '@onekeyhq/shared/src/utils/overlayUtils';
+import resetUtils from '@onekeyhq/shared/src/utils/resetUtils';
 
 import backgroundApiProxy from '../../../background/instance/backgroundApiProxy';
 
@@ -16,8 +18,7 @@ export function useLocaleOptions() {
       [
         {
           label: intl.formatMessage({
-            id: 'form__auto',
-            defaultMessage: 'System',
+            id: ETranslations.global_auto,
           }),
           value: 'system',
         },
@@ -44,11 +45,13 @@ export function useResetApp(params?: { inAppStateLock: boolean }) {
   return useCallback(() => {
     Dialog.show({
       ...(inAppStateLock ? inAppStateLockStyle : undefined),
-      title: intl.formatMessage({ id: 'action__reset' }),
+      title: intl.formatMessage({ id: ETranslations.global_reset }),
       icon: 'ErrorOutline',
       tone: 'destructive',
-      description:
-        'This will delete all the data you have created on OneKey. After making sure that you have a proper backup, enter "RESET" to reset the App',
+      portalContainer: inAppStateLock
+        ? Portal.Constant.APP_STATE_LOCK_CONTAINER_OVERLAY
+        : undefined,
+      description: intl.formatMessage({ id: ETranslations.reset_app_desc }),
       renderContent: (
         <Dialog.Form
           formProps={{
@@ -60,7 +63,7 @@ export function useResetApp(params?: { inAppStateLock: boolean }) {
               autoFocus
               flex={1}
               testID="erase-data-input"
-              placeholder={intl.formatMessage({ id: 'action__reset' })}
+              placeholder="RESET"
             />
           </Dialog.FormField>
         </Dialog.Form>
@@ -76,8 +79,21 @@ export function useResetApp(params?: { inAppStateLock: boolean }) {
         },
         testID: 'erase-data-confirm',
       },
-      onConfirm() {
-        void backgroundApiProxy.serviceApp.resetApp();
+      onConfirm: async () => {
+        try {
+          // disable setInterval on ext popup
+          if (platformEnv.isExtensionUiPopup) {
+            resetUtils.startResetting();
+          }
+          await backgroundApiProxy.serviceApp.resetApp();
+        } catch (e) {
+          console.error('failed to reset app with error', e);
+        } finally {
+          // able setInterval on ext popup
+          if (platformEnv.isExtensionUiPopup) {
+            resetUtils.endResetting();
+          }
+        }
       },
     });
   }, [inAppStateLock, intl]);

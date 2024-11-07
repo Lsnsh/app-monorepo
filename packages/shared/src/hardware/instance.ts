@@ -1,15 +1,13 @@
 import {
-  HARDWARE_SDK_IFRAME_SRC_ONEKEYCN,
   HARDWARE_SDK_IFRAME_SRC_ONEKEYSO,
   HARDWARE_SDK_VERSION,
 } from '@onekeyhq/shared/src/config/appConfig';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import { memoizee } from '@onekeyhq/shared/src/utils/cacheUtils';
 
-import { EOnekeyDomain } from '../../types';
-
 import { importHardwareSDK, importHardwareSDKLowLevel } from './sdk-loader';
 
+import type { EOnekeyDomain } from '../../types';
 import type {
   ConnectSettings,
   CoreApi,
@@ -21,10 +19,7 @@ let HardwareSDK: CoreApi;
 let HardwareLowLevelSDK: LowLevelCoreApi;
 
 export const generateConnectSrc = (hardwareConnectSrc?: EOnekeyDomain) => {
-  let connectSrc = `${HARDWARE_SDK_IFRAME_SRC_ONEKEYSO}/${HARDWARE_SDK_VERSION}/`;
-  if (hardwareConnectSrc === EOnekeyDomain.ONEKEY_CN) {
-    connectSrc = `${HARDWARE_SDK_IFRAME_SRC_ONEKEYCN}/${HARDWARE_SDK_VERSION}/`;
-  }
+  const connectSrc = `${HARDWARE_SDK_IFRAME_SRC_ONEKEYSO}/${HARDWARE_SDK_VERSION}/`;
   return connectSrc;
 };
 
@@ -32,6 +27,7 @@ export const getHardwareSDKInstance = memoizee(
   async (params: {
     isPreRelease: boolean;
     hardwareConnectSrc?: EOnekeyDomain;
+    debugMode?: boolean;
   }) =>
     // eslint-disable-next-line no-async-promise-executor
     new Promise<CoreApi>(async (resolve, reject) => {
@@ -41,7 +37,7 @@ export const getHardwareSDKInstance = memoizee(
       }
 
       const settings: Partial<ConnectSettings> = {
-        debug: platformEnv.isDev,
+        debug: params.debugMode,
         fetchConfig: true,
       };
 
@@ -50,8 +46,7 @@ export const getHardwareSDKInstance = memoizee(
       if (!platformEnv.isNative) {
         let connectSrc = generateConnectSrc(params.hardwareConnectSrc);
         if (platformEnv.isDesktop) {
-          // @ts-expect-error
-          const { sdkConnectSrc } = window.ONEKEY_DESKTOP_GLOBALS ?? {};
+          const { sdkConnectSrc } = globalThis.ONEKEY_DESKTOP_GLOBALS ?? {};
           if (sdkConnectSrc) {
             connectSrc = sdkConnectSrc;
           }

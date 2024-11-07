@@ -5,12 +5,14 @@ import {
 import { hash160 } from '@onekeyhq/core/src/secret/hash';
 import type {
   IAddressItem,
-  ISectionItem,
+  IAddressNetworkItem,
 } from '@onekeyhq/kit/src/views/AddressBook/type';
 import {
   backgroundClass,
   backgroundMethod,
+  toastIfError,
 } from '@onekeyhq/shared/src/background/backgroundDecorators';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import bufferUtils from '@onekeyhq/shared/src/utils/bufferUtils';
 import { generateUUID } from '@onekeyhq/shared/src/utils/miscUtils';
@@ -18,18 +20,9 @@ import { stableStringify } from '@onekeyhq/shared/src/utils/stringUtils';
 import timerUtils from '@onekeyhq/shared/src/utils/timerUtils';
 
 import { addressBookPersistAtom } from '../states/jotai/atoms/addressBooks';
+import { devSettingsPersistAtom } from '../states/jotai/atoms/devSettings';
 
 import ServiceBase from './ServiceBase';
-
-function getSectionItemScore(item: ISectionItem): number {
-  if (item.title.toLowerCase() === 'bitcoin') {
-    return -10;
-  }
-  if (item.title.toLowerCase() === 'evm') {
-    return -9;
-  }
-  return item.data[0]?.createdAt ?? 0;
-}
 
 @backgroundClass()
 class ServiceAddressBook extends ServiceBase {
@@ -60,6 +53,7 @@ class ServiceAddressBook extends ServiceBase {
       ...prev,
       updateTimestamp: Date.now(),
     }));
+    void this.backgroundApi.serviceCloudBackup.requestAutoBackup();
   }
 
   private async getItems(): Promise<IAddressItem[]> {
@@ -107,52 +101,57 @@ class ServiceAddressBook extends ServiceBase {
     throw new Error('address book failed to verify hash');
   }
 
-  getItemGroupName(item: IAddressItem, names: Record<string, string>) {
-    return item.networkId.startsWith('evm--') ? 'EVM' : names[item.networkId];
+  @backgroundMethod()
+  async getSafeRawItems(): Promise<IAddressItem[]> {
+    const isSafe = await this.verifyHash(true);
+    const items = await this.getItems();
+    return isSafe ? items : [];
   }
 
   @backgroundMethod()
-  async groupItems({ networkId }: { networkId?: string }) {
-    const { serviceNetwork } = this.backgroundApi;
-    let items = await this.getItems();
-    const names = await serviceNetwork.getNetworkNames();
+  @toastIfError()
+  async getSafeItems(params?: {
+    networkId?: string;
+  }): Promise<{ isSafe: boolean; items: IAddressNetworkItem[] }> {
+    const { networkId } = params ?? {};
+    // throw new Error('address book failed to verify hash');
+    const isSafe: boolean = await this.verifyHash(true);
+    if (!isSafe) {
+      return { isSafe, items: [] };
+    }
+    let rawItems = await this.getItems();
     if (networkId) {
       const [impl] = networkId.split('--');
-      items = items.filter((item) => item.networkId.startsWith(`${impl}--`));
+      rawItems = rawItems.filter((item) =>
+        item.networkId.startsWith(`${impl}--`),
+      );
     }
-    const data = items.reduce((result, item) => {
-      const title = this.getItemGroupName(item, names);
-      if (!result[title]) {
-        result[title] = [];
+    const promises = rawItems.map(async (item) => {
+      const network = await this.backgroundApi.serviceNetwork.getNetworkSafe({
+        networkId: item.networkId,
+      });
+      if (!network) {
+        return undefined;
       }
-      result[title].push(item);
-      return result;
-    }, {} as Record<string, IAddressItem[]>);
-    return (
-      Object.entries(data)
-        .map((o) => ({ title: o[0], data: o[1] }))
-        // pin up btc, evm to top, other impl sort by create time
-        .sort((a, b) => getSectionItemScore(a) - getSectionItemScore(b))
-    );
-  }
-
-  @backgroundMethod()
-  async getSafeItems({ networkId }: { networkId?: string }) {
-    const groupItems = await this.groupItems({ networkId });
-    const isSafe = await this.verifyHash(true);
-    return { isSafe, items: isSafe ? groupItems : [] };
+      return {
+        ...item,
+        network,
+      };
+    });
+    const items = (await Promise.all(promises)).filter(Boolean);
+    return { isSafe, items };
   }
 
   @backgroundMethod()
   async __dangerTamperVerifyHashForTest() {
-    if (!platformEnv.isDev) {
-      return;
+    const { enabled } = await devSettingsPersistAtom.get();
+    if (platformEnv.isDev || enabled) {
+      const items = await this.getItems();
+      await this.setItems(
+        items,
+        encodeSensitiveText({ text: String(Date.now()) }),
+      );
     }
-    const items = await this.getItems();
-    await this.setItems(
-      items,
-      encodeSensitiveText({ text: String(Date.now()) }),
-    );
   }
 
   @backgroundMethod()
@@ -167,9 +166,9 @@ class ServiceAddressBook extends ServiceBase {
   }
 
   private async validateItem(item: IAddressItem) {
-    const { serviceAccountProfile } = this.backgroundApi;
+    const { serviceValidator } = this.backgroundApi;
     if (item.name.length > 24) {
-      return new Error('Name is too long');
+      throw new Error('Name is too long');
     }
     let result = await this.findItem({ address: item.address });
     if (result && (!item.id || result.id !== item.id)) {
@@ -179,11 +178,11 @@ class ServiceAddressBook extends ServiceBase {
     if (result && (!item.id || result.id !== item.id)) {
       throw new Error('Name already exist');
     }
-    const isValid = await serviceAccountProfile.validateAddress({
+    const validStatus = await serviceValidator.validateAddress({
       networkId: item.networkId,
       address: item.address,
     });
-    if (!isValid) {
+    if (validStatus !== 'valid') {
       throw new Error('Invalid address');
     }
   }
@@ -200,6 +199,7 @@ class ServiceAddressBook extends ServiceBase {
     items.push(newObj);
     const { password } = await servicePassword.promptPasswordVerify();
     await this.setItems(items, password);
+    defaultLogger.setting.page.addAddressBook({ network: newObj.networkId });
   }
 
   @backgroundMethod()
@@ -232,6 +232,12 @@ class ServiceAddressBook extends ServiceBase {
     const items = await this.getItems();
     const data = items.filter((i) => i.id !== id);
     await this.setItems(data, password);
+    const remove = items.filter((i) => i.id === id);
+    if (remove.length > 0) {
+      remove.forEach((o) => {
+        defaultLogger.setting.page.removeAddressBook({ network: o.networkId });
+      });
+    }
   }
 
   @backgroundMethod()
@@ -264,15 +270,18 @@ class ServiceAddressBook extends ServiceBase {
   @backgroundMethod()
   public async stringifyItems() {
     const { serviceNetwork } = this.backgroundApi;
-    const items = await this.getItems();
-    const names = await serviceNetwork.getNetworkNames();
+    const rawItems = await this.getItems();
     const result: string[] = [];
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      const text = `${this.getItemGroupName(item, names)} ${item.name} ${
-        item.address
-      }`;
-      result.push(text);
+    for (let i = 0; i < rawItems.length; i += 1) {
+      const item = rawItems[i];
+      const network = await serviceNetwork.getNetworkSafe({
+        networkId: item.networkId,
+      });
+      if (network) {
+        const title = network.id.startsWith('evm--') ? 'EVM' : network.name;
+        const text = `${title} ${item.name} ${item.address}`;
+        result.push(text);
+      }
     }
     return result.join('\n');
   }
@@ -296,6 +305,48 @@ class ServiceAddressBook extends ServiceBase {
     const items = await this.getItems();
     await this.setItems(items, oldPassword);
     await simpleDb.addressBook.clearBackupHash();
+  }
+
+  @backgroundMethod()
+  public async hideDialogInfo() {
+    const { servicePassword } = this.backgroundApi;
+    const passwordSet = await servicePassword.checkPasswordSet();
+    if (!passwordSet) {
+      return;
+    }
+    await addressBookPersistAtom.set((prev) => ({
+      ...prev,
+      hideDialogInfo: true,
+    }));
+  }
+
+  // for Migration
+  @backgroundMethod()
+  async bulkSetItemsWithUniq(items: IAddressItem[], password: string) {
+    const currentItems = await this.getItems();
+    const currentAddressSet = new Set(
+      currentItems.map((i) => i.address.toLowerCase()),
+    );
+    const currentNameSet = new Set(
+      currentItems.map((i) => i.name.toLowerCase()),
+    );
+    const itemsUniq: IAddressItem[] = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const o = items[i];
+      const lowerCaseAddress = o.address.toLowerCase();
+      const lowerCaseName = o.name.toLowerCase();
+      if (!currentAddressSet.has(lowerCaseAddress)) {
+        if (currentNameSet.has(lowerCaseName)) {
+          await timerUtils.wait(5);
+          o.name = `${o.name} (${Date.now()})`;
+        }
+        itemsUniq.push(o);
+        currentAddressSet.add(lowerCaseAddress);
+        currentNameSet.add(o.name.toLowerCase());
+      }
+    }
+    const itemsToAdd = currentItems.concat(itemsUniq);
+    await this.setItems(itemsToAdd, password);
   }
 }
 

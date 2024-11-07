@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useIntl } from 'react-intl';
 
 import {
   Button,
@@ -7,13 +7,12 @@ import {
   SizableText,
   XStack,
 } from '@onekeyhq/components';
-import { useLocaleVariant } from '@onekeyhq/kit/src/hooks/useLocaleVariant';
 import { LITE_CARD_URL } from '@onekeyhq/shared/src/config/appConfig';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import { openUrlExternal } from '@onekeyhq/shared/src/utils/openUrlUtils';
 
 export function Header() {
-  const locale = useLocaleVariant();
-  const url = useMemo(() => `${LITE_CARD_URL}?language=${locale}`, [locale]);
+  const intl = useIntl();
   return (
     <LinearGradient
       colors={['rgba(222, 226, 229, 0.45)', 'rgba(222, 226, 229, 1)']}
@@ -41,10 +40,10 @@ export function Header() {
         />
       </XStack>
       <SizableText size="$headingXl" color="rgba(0, 0, 0, 0.95)">
-        OneKey Lite
+        {intl.formatMessage({ id: ETranslations.global_onekey_lite })}
       </SizableText>
       <SizableText size="$bodyMd" color="rgba(0, 0, 0, 0.6)" pr={130}>
-        Restore your wallet without typing one word.
+        {intl.formatMessage({ id: ETranslations.settings_onekey_lite_desc })}
       </SizableText>
       <Button
         bg="rgba(0, 0, 0, 0.95)"
@@ -54,11 +53,11 @@ export function Header() {
         color="white"
         iconAfter="OpenOutline"
         iconColor="white"
-        focusStyle={{ bg: 'rgba(0, 0, 0, 0.75)' }}
+        focusVisibleStyle={{ bg: 'rgba(0, 0, 0, 0.75)' }}
         hoverStyle={{ bg: 'rgba(0, 0, 0, 0.75)' }}
-        onPress={() => openUrlExternal(url)}
+        onPress={() => openUrlExternal(LITE_CARD_URL)}
       >
-        Buy One
+        {intl.formatMessage({ id: ETranslations.global_get_one })}
       </Button>
     </LinearGradient>
   );

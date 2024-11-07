@@ -1,8 +1,11 @@
+import { ECoreApiExportedSecretKeyType } from '@onekeyhq/core/src/types';
+import { getNetworkIdsMap } from '@onekeyhq/shared/src/config/networkIds';
 import {
   COINTYPE_COSMOS,
   IMPL_COSMOS,
   INDEX_PLACEHOLDER,
 } from '@onekeyhq/shared/src/engine/engineConsts';
+import { EEarnProviderEnum } from '@onekeyhq/shared/types/earn';
 
 import { EDBAccountType } from '../../../dbs/local/consts';
 
@@ -35,12 +38,31 @@ const settings: IVaultSettings = {
   externalAccountEnabled: false,
   watchingAccountEnabled: true,
 
+  supportExportedSecretKeys: [
+    ECoreApiExportedSecretKeyType.privateKey,
+    // ECoreApiExportedSecretKeyType.publicKey,
+  ],
+
+  dappInteractionEnabled: true,
+
   isUtxo: false,
   isSingleToken: false,
   NFTEnabled: false,
   nonceRequired: false,
   feeUTXORequired: false,
   editFeeEnabled: true,
+  replaceTxEnabled: false,
+  onChainHistoryDisabled: true,
+  estimatedFeePollingInterval: 120,
+
+  minTransferAmount: '0.0000001',
+
+  defaultFeePresetIndex: 1,
+
+  withMemo: true,
+  memoMaxLength: 512,
+
+  customRpcEnabled: true,
 
   accountDeriveInfo,
   networkInfo: {
@@ -49,38 +71,68 @@ const settings: IVaultSettings = {
       curve: 'secp256k1',
     },
     'cosmos--cosmoshub-4': {
-      'addressPrefix': 'cosmos',
-      'curve': 'secp256k1',
-      // 'gasPriceStep': {
-      //   'min': '0',
-      // },
-      // 'mainCoinDenom': 'uatom',
+      addressPrefix: 'cosmos',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'uatom',
     },
     'cosmos--theta-testnet-001': {
-      'addressPrefix': 'cosmos',
-      'curve': 'secp256k1',
-      // 'gasPriceStep': {
-      //   'min': '0',
-      // },
-      // 'mainCoinDenom': 'uatom',
+      addressPrefix: 'cosmos',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'uatom',
     },
     'cosmos--osmosis-1': {
-      'addressPrefix': 'osmo',
-      'curve': 'secp256k1',
+      addressPrefix: 'osmo',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'uosmo',
+    },
+    'cosmos--akashnet-2': {
+      addressPrefix: 'akash',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'uakt',
+    },
+    'cosmos--crypto-org-chain-mainnet-1': {
+      addressPrefix: 'cro',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'basecro',
+    },
+    'cosmos--fetchhub-4': {
+      addressPrefix: 'fetch',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'afet',
+    },
+    'cosmos--juno-1': {
+      addressPrefix: 'juno',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'ujuno',
+    },
+    'cosmos--secret-4': {
+      addressPrefix: 'secret',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'uscrt',
+    },
+    'cosmos--celestia': {
+      addressPrefix: 'celestia',
+      curve: 'secp256k1',
+      nativeTokenAddress: 'utia',
+    },
+  },
 
-      // 'gasPriceStep': {
-      //   'high': '0.04',
-      //   'low': '0.0025',
-      //   'min': '0.0025',
-      //   'normal': '0.025',
-      // },
-      // 'mainCoinDenom': 'uosmo',
-
-      // minGasPrice: '0',
-      // allowZeroFee: true,
-      // isIntegerGasPrice?: boolean;
-      // minGasPrice?: string;
-      // allowZeroFee?: boolean;
+  stakingConfig: {
+    [getNetworkIdsMap().cosmoshub]: {
+      providers: {
+        [EEarnProviderEnum.Everstake]: {
+          supportedSymbols: ['ATOM'],
+          configs: {
+            'ATOM': {
+              enabled: true,
+              tokenAddress: 'uatom',
+              displayProfit: true,
+              usePublicKey: true,
+              claimWithAmount: true,
+            },
+          },
+        },
+      },
     },
   },
 };

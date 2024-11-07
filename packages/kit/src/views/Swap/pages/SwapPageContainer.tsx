@@ -1,30 +1,22 @@
-import { useCallback } from 'react';
-
 import { Page } from '@onekeyhq/components';
+import { useDebugComponentRemountLog } from '@onekeyhq/shared/src/utils/debugUtils';
 import { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
 
-import { AccountSelectorProviderMirror } from '../../../components/AccountSelector';
-import { AccountSelectorTriggerSwap } from '../../../components/AccountSelector/AccountSelectorTrigger/AccountSelectorTriggerSwap';
+import { TabPageHeader } from '../../../components/TabPageHeader';
 
-import SwapMainLand from './components/SwapMainLand';
+import SwapMainLandWithPageType from './components/SwapMainLand';
 
 const SwapPageContainer = () => {
-  const headerLeft = useCallback(
-    () => (
-      <AccountSelectorProviderMirror
-        config={{ sceneName: EAccountSelectorSceneName.swap, sceneUrl: '' }}
-        enabledNum={[0]}
-      >
-        <AccountSelectorTriggerSwap num={0} />
-      </AccountSelectorProviderMirror>
-    ),
-    [],
-  );
+  useDebugComponentRemountLog({ name: 'SwapPageContainer' });
+
   return (
-    <Page scrollEnabled>
-      <Page.Header headerLeft={headerLeft} />
+    <Page fullPage>
+      <TabPageHeader
+        sceneName={EAccountSelectorSceneName.swap}
+        showHeaderRight={false}
+      />
       <Page.Body>
-        <SwapMainLand />
+        <SwapMainLandWithPageType />
       </Page.Body>
     </Page>
   );

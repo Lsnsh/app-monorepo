@@ -1,103 +1,196 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useIsFocused } from '@react-navigation/core';
-import { requestPermissionsAsync as requestCameraPermissionsAsync } from 'expo-barcode-scanner';
+import {
+  getPermissionsAsync,
+  requestPermissionsAsync,
+} from 'expo-barcode-scanner';
 import { PermissionStatus } from 'expo-modules-core';
 import { useIntl } from 'react-intl';
 
-import { Dialog, Stack, YStack } from '@onekeyhq/components';
+import {
+  BlurView,
+  Dialog,
+  SizableText,
+  Stack,
+  YStack,
+} from '@onekeyhq/components';
+import { useRouteIsFocused as useIsFocused } from '@onekeyhq/kit/src/hooks/useRouteIsFocused';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import extUtils, { EXT_HTML_FILES } from '@onekeyhq/shared/src/utils/extUtils';
-import { openSettings } from '@onekeyhq/shared/src/utils/openUrlUtils';
+import {
+  openSettings,
+  openUrlExternal,
+} from '@onekeyhq/shared/src/utils/openUrlUtils';
 
 import { ScanCamera } from './ScanCamera';
 
 export type IScanQrCodeProps = {
-  handleBarCodeScanned: (value: string) => void;
+  handleBarCodeScanned: (value: string) => Promise<{ progress?: number }>;
+  qrWalletScene?: boolean;
 };
 
-export function ScanQrCode({ handleBarCodeScanned }: IScanQrCodeProps) {
+export function ScanQrCode({
+  handleBarCodeScanned,
+  qrWalletScene,
+}: IScanQrCodeProps) {
   const intl = useIntl();
-  const scanned = useRef(false);
+  const scanned = useRef<string | undefined>(undefined);
   const [currentPermission, setCurrentPermission] = useState<PermissionStatus>(
     PermissionStatus.UNDETERMINED,
   );
   const isFocused = useIsFocused();
+  const [progress, setProgress] = useState<number | undefined>();
   /*
     useEffect has been removed for performance. 
     If other hooks cause scanned to be refreshed to false, please add useEffect back.
   */
   if (isFocused) {
-    scanned.current = false;
+    scanned.current = undefined;
   }
 
   const reloadHandleBarCodeScanned = useCallback(
-    (data?: string | null) => {
-      if (scanned.current || !data) {
+    async (data?: string | null) => {
+      if (!data) {
         return;
       }
-      scanned.current = true;
-      handleBarCodeScanned?.(data);
+      if (scanned.current === data) {
+        return;
+      }
+      scanned.current = data;
+      if (!handleBarCodeScanned) {
+        return;
+      }
+      const { progress: progressValue } = await handleBarCodeScanned(data);
+      if (progressValue) {
+        setProgress(progressValue);
+      }
     },
     [handleBarCodeScanned],
   );
 
-  useEffect(() => {
-    void requestCameraPermissionsAsync().then(({ status }) => {
-      if (status !== PermissionStatus.GRANTED) {
-        const { isExtensionUiPopup } = platformEnv;
-        Dialog.show({
-          tone: 'warning',
-          icon: 'ErrorOutline',
-          title: intl.formatMessage({ id: 'modal__camera_access_not_granted' }),
-          description: intl.formatMessage({
-            id: isExtensionUiPopup
-              ? 'msg__approving_camera_permission_needs_to_be_turned_on_in_expand_view'
-              : 'modal__camera_access_not_granted_desc',
-          }),
-          onConfirmText: intl.formatMessage({
-            id: isExtensionUiPopup
-              ? 'form__expand_view'
-              : 'action__go_to_settings',
-          }),
-          showCancelButton: true,
-          showConfirmButton: true,
-          onConfirm: () => {
-            if (isExtensionUiPopup) {
-              extUtils
-                .openUrlInTab(EXT_HTML_FILES.uiExpandTab)
-                .catch(console.error);
-            } else {
-              openSettings('camera');
-            }
-          },
-        });
+  useEffect(
+    () => () => {
+      if (!scanned.current) {
+        void handleBarCodeScanned?.('');
       }
-      setCurrentPermission(status);
+    },
+    [handleBarCodeScanned],
+  );
+
+  const handlePermission = useCallback(async () => {
+    const readSilentStatus =
+      platformEnv.isDesktopMac || platformEnv.isDesktopWin
+        ? globalThis.desktopApi.getMediaAccessStatus('camera')
+        : (await getPermissionsAsync())?.status;
+    if (readSilentStatus === PermissionStatus.GRANTED) {
+      setCurrentPermission(PermissionStatus.GRANTED);
+      return;
+    }
+    const { status } = await requestPermissionsAsync();
+    setCurrentPermission(status);
+
+    if (status === PermissionStatus.GRANTED) {
+      return;
+    }
+    const canRequestExpandView =
+      platformEnv.isExtension && !platformEnv.isExtensionUiExpandTab;
+    const canViewTutorial =
+      platformEnv.isRuntimeBrowser &&
+      !platformEnv.isDesktop &&
+      (platformEnv.isRuntimeChrome ||
+        platformEnv.isRuntimeEdge ||
+        platformEnv.isRuntimeBrave);
+    const permissionConfirmText = canViewTutorial
+      ? ETranslations.global_view_tutorial
+      : ETranslations.global_go_settings;
+    Dialog.show({
+      tone: 'warning',
+      icon: 'ErrorOutline',
+      title: intl.formatMessage({
+        id: ETranslations.scan_camera_access_denied,
+      }),
+      description: intl.formatMessage({
+        id: canRequestExpandView
+          ? ETranslations.scan_grant_camera_access_in_expand_view
+          : ETranslations.scan_enable_camera_permissions,
+      }),
+      onConfirmText: intl.formatMessage({
+        id: canRequestExpandView
+          ? ETranslations.global_expand_view
+          : permissionConfirmText,
+      }),
+      showCancelButton: true,
+      showConfirmButton: true,
+      onConfirm: () => {
+        if (canRequestExpandView) {
+          extUtils
+            .openUrlInTab(EXT_HTML_FILES.uiExpandTab)
+            .catch(console.error);
+        } else {
+          if (platformEnv.isRuntimeBrowser && !platformEnv.isDesktop) {
+            if (platformEnv.isRuntimeChrome) {
+              openUrlExternal(
+                'https://support.google.com/chrome/answer/2693767',
+              );
+              return;
+            }
+            if (platformEnv.isRuntimeEdge) {
+              openUrlExternal(
+                'https://support.microsoft.com/zh-cn/windows/a83257bc-e990-d54a-d212-b5e41beba857',
+              );
+              return;
+            }
+            if (platformEnv.isRuntimeBrave) {
+              openUrlExternal(
+                'https://support.brave.com/hc/en-us/articles/360018205431',
+              );
+              return;
+            }
+          }
+          openSettings('camera');
+        }
+      },
     });
   }, [intl]);
+
+  useEffect(() => {
+    void handlePermission();
+  }, [handlePermission]);
+
   return currentPermission === PermissionStatus.GRANTED ? (
     <ScanCamera
       style={{
         flex: 1,
       }}
-      isActive={isFocused}
       handleScanResult={reloadHandleBarCodeScanned}
     >
-      <YStack
-        fullscreen
-        alignItems="center"
-        justifyContent="center"
-        overflow="hidden"
-      >
-        <Stack
-          borderWidth={400}
-          borderColor="rgba(0,0,0,.5)"
-          borderRadius={425}
-        >
-          <Stack w={256} h={256} borderRadius="$6" />
-        </Stack>
-      </YStack>
+      {qrWalletScene ? (
+        <YStack fullscreen>
+          {platformEnv.isNativeAndroid ? null : (
+            <BlurView flex={1} contentStyle={{ flex: 1 }} />
+          )}
+        </YStack>
+      ) : null}
+      {progress ? (
+        <YStack fullscreen justifyContent="flex-end" alignItems="flex-end">
+          <Stack
+            bg="$blackA9"
+            borderRadius="$2"
+            mr="$3"
+            mb="$3"
+            px="$2"
+            py="$1"
+          >
+            <SizableText
+              size="$bodySmMedium"
+              color="$whiteA12"
+            >{`${intl.formatMessage({ id: ETranslations.scanning_text })} ${(
+              progress * 100
+            ).toFixed(0)}%`}</SizableText>
+          </Stack>
+        </YStack>
+      ) : null}
     </ScanCamera>
   ) : null;
 }

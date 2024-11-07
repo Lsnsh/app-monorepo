@@ -80,10 +80,14 @@ const Form1 = () => {
       <Form.Field label="Checkbox" name="checkbox">
         <Checkbox label="checkbox" />
       </Form.Field>
-      <Form.Field label="Switch" name="switch">
+      <Form.Field label="Switch" name="switch" horizontal>
         <Switch />
       </Form.Field>
-      <Form.Field label="Radio" name="radio">
+      <Form.Field
+        label="Radio"
+        name="radio"
+        labelAddon="between 1 and 10000 sats"
+      >
         <Radio
           options={[
             { label: 'Second value', value: '2' },
@@ -111,6 +115,9 @@ const Form1 = () => {
         />
       </Form.Field>
       <Form.Field label="search" name="search">
+        <SearchBar />
+      </Form.Field>
+      <Form.Field name="search">
         <SearchBar />
       </Form.Field>
       <Button onPress={() => console.log(form.getValues())}>

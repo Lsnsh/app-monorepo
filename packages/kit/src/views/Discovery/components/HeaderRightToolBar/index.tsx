@@ -17,10 +17,12 @@ import {
 } from '@onekeyhq/kit/src/components/AccountSelector';
 import { AccountSelectorTriggerBrowserSingle } from '@onekeyhq/kit/src/components/AccountSelector/AccountSelectorTrigger/AccountSelectorTriggerDApp';
 import { usePromiseResult } from '@onekeyhq/kit/src/hooks/usePromiseResult';
+import type { IDBIndexedAccount } from '@onekeyhq/kit-bg/src/dbs/local/types';
 import {
   EAppEventBusNames,
   appEventBus,
 } from '@onekeyhq/shared/src/eventBus/appEventBus';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
 import { EAccountSelectorSceneName } from '@onekeyhq/shared/types';
 import type { IConnectionAccountInfoWithNum } from '@onekeyhq/shared/types/dappConnection';
 
@@ -29,6 +31,9 @@ import { useHandleDiscoveryAccountChanged } from '../../../DAppConnection/hooks/
 import { useShouldUpdateConnectedAccount } from '../../hooks/useDAppNotifyChanges';
 import { useActiveTabId, useWebTabDataById } from '../../hooks/useWebTabs';
 import { withBrowserProvider } from '../../pages/Browser/WithBrowserProvider';
+import SyncDappAccountToHomeProvider from '../SyncDappAccountToHomeProvider';
+
+import { ShortcutsActionButton } from './ShortcutsActionButton.desktop';
 
 import type { IHandleAccountChangedParams } from '../../../DAppConnection/hooks/useHandleAccountChanged';
 
@@ -63,10 +68,14 @@ function SingleAccountAndNetworkSelectorTrigger({
     handleAccountChanged,
   });
   return (
-    <>
-      <NetworkSelectorTriggerBrowserSingle num={num} />
-      <AccountSelectorTriggerBrowserSingle num={num} />
-    </>
+    <XStack gap="$3" alignItems="center">
+      <Stack>
+        <NetworkSelectorTriggerBrowserSingle num={num} />
+      </Stack>
+      <Stack>
+        <AccountSelectorTriggerBrowserSingle num={num} />
+      </Stack>
+    </XStack>
   );
 }
 
@@ -81,7 +90,14 @@ function AvatarStackTrigger({
         accountId: accountInfo.accountId,
         networkId: accountInfo.networkId || '',
       });
-      return { account, networkId: accountInfo.networkId };
+      let indexedAccount: IDBIndexedAccount | undefined;
+      if (account.indexedAccountId) {
+        indexedAccount =
+          await backgroundApiProxy.serviceAccount.getIndexedAccount({
+            id: account.indexedAccountId,
+          });
+      }
+      return { account, networkId: accountInfo.networkId, indexedAccount };
     });
     return Promise.all(promises);
   }, [accountsInfo]);
@@ -89,13 +105,14 @@ function AvatarStackTrigger({
   return (
     <XStack role="button" testID="multi-avatar">
       {accounts?.slice(0, 2).map((account, index) => (
-        <Stack borderWidth={2} borderColor="$bgApp" ml="$-0.5">
+        <Stack key={index} borderWidth={2} borderColor="$bgApp" ml="$-0.5">
           <AccountAvatar
             key={account?.account.id}
             account={account.account}
             size="small"
             zIndex={-index}
             networkId={account?.networkId}
+            indexedAccount={account.indexedAccount}
           />
         </Stack>
       ))}
@@ -127,12 +144,6 @@ function AccountSelectorPopoverContent({
   accountsInfo: IConnectionAccountInfoWithNum[];
   afterChangeAccount: () => void;
 }) {
-  useEffect(() => {
-    console.log('Mounted AccountSelectorPopoverContent');
-    return () => {
-      console.log('Unmounted AccountSelectorPopoverContent');
-    };
-  }, []);
   const { handleAccountInfoChanged } = useShouldUpdateConnectedAccount();
   const { closePopover } = usePopoverContext();
   const beforeShowTrigger = useCallback(
@@ -153,7 +164,7 @@ function AccountSelectorPopoverContent({
         return acc;
       }, {} as Record<number, { networkIds: string[] }>)}
     >
-      <YStack p="$5" space="$2">
+      <YStack p="$5" gap="$2">
         {accountsInfo.map((account) => (
           <DAppAccountListItem
             key={account.num}
@@ -231,13 +242,25 @@ function HeaderRightToolBar() {
       return <Spinner />;
     }
     if (!connectedAccountsInfo || !origin) {
-      return null;
+      return <ShortcutsActionButton />;
     }
     if (connectedAccountsInfo.length === 1) {
       return (
-        <>
-          {connectedAccountsInfo.map((accountInfo) => (
+        <Stack
+          $gtMd={{
+            width: platformEnv.isNative ? undefined : '100%',
+            flexDirection: 'row-reverse',
+            alignItems: 'center',
+          }}
+        >
+          <ShortcutsActionButton />
+          <SyncDappAccountToHomeProvider
+            dAppAccountInfos={connectedAccountsInfo}
+            origin={origin}
+          />
+          {connectedAccountsInfo.map((accountInfo, index) => (
             <AccountSelectorProviderMirror
+              key={index}
               config={{
                 sceneName: EAccountSelectorSceneName.discover,
                 sceneUrl: origin ?? '',
@@ -249,7 +272,7 @@ function HeaderRightToolBar() {
                 },
               }}
             >
-              <XStack mr="$-1.5">
+              <XStack mr="$-1.5" flexShrink={1}>
                 <SingleAccountAndNetworkSelectorTrigger
                   origin={origin}
                   num={accountInfo.num}
@@ -259,7 +282,7 @@ function HeaderRightToolBar() {
               </XStack>
             </AccountSelectorProviderMirror>
           ))}
-        </>
+        </Stack>
       );
     }
     return (
@@ -292,4 +315,24 @@ function HeaderRightToolBar() {
   return <>{content}</>;
 }
 
-export default withBrowserProvider(HeaderRightToolBar);
+function HeaderRightToolBarWrapper() {
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
+
+  useEffect(() => {
+    const onSwitchNetwork = (event: { state: 'switching' | 'completed' }) => {
+      setIsSwitchingNetwork(event.state === 'switching');
+    };
+    appEventBus.on(EAppEventBusNames.OnSwitchDAppNetwork, onSwitchNetwork);
+    return () => {
+      appEventBus.off(EAppEventBusNames.OnSwitchDAppNetwork, onSwitchNetwork);
+    };
+  }, []);
+
+  if (isSwitchingNetwork) {
+    return null;
+  }
+
+  return <HeaderRightToolBar />;
+}
+
+export default withBrowserProvider(HeaderRightToolBarWrapper);

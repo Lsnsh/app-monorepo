@@ -4,10 +4,13 @@ import { CommonActions } from '@react-navigation/native';
 import { MotiView } from 'moti';
 import { useIntl } from 'react-intl';
 import { StyleSheet } from 'react-native';
-import { getTokens, useTheme } from 'tamagui';
+import { getTokens, useMedia, useTheme } from 'tamagui';
 
-import type { IActionListSection } from '@onekeyhq/components/src/actions';
-import { Portal } from '@onekeyhq/components/src/hocs';
+import { type IActionListSection } from '@onekeyhq/components/src/actions';
+import {
+  EPortalContainerConstantName,
+  Portal,
+} from '@onekeyhq/components/src/hocs';
 import useProviderSideBarValue from '@onekeyhq/components/src/hocs/Provider/hooks/useProviderSideBarValue';
 import { useSafeAreaInsets } from '@onekeyhq/components/src/hooks';
 import type {
@@ -17,11 +20,14 @@ import type {
 import {
   Icon,
   SizableText,
+  Stack,
   XStack,
   YStack,
 } from '@onekeyhq/components/src/primitives';
 import { DOWNLOAD_URL } from '@onekeyhq/shared/src/config/appConfig';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import type { EShortcutEvents } from '@onekeyhq/shared/src/shortcuts/shortcuts.enum';
 import { openUrlExternal } from '@onekeyhq/shared/src/utils/openUrlUtils';
 
 import { DesktopDragZoneAbsoluteBar } from '../../../DesktopDragZoneBox';
@@ -46,6 +52,7 @@ function TabItemView({
   onPress: () => void;
   options: BottomTabNavigationOptions & {
     actionList?: IActionListSection[];
+    shortcutKey?: EShortcutEvents;
   };
   isCollapse?: boolean;
 }) {
@@ -63,6 +70,7 @@ function TabItemView({
         onPress={onPress}
         aria-current={isActive ? 'page' : undefined}
         selected={isActive}
+        shortcutKey={options.shortcutKey}
         tabBarStyle={options.tabBarStyle}
         // @ts-expect-error
         icon={options?.tabBarIcon?.(isActive) as IKeyOfIcons}
@@ -87,23 +95,29 @@ function DownloadButton(props: IXStackProps) {
   }
   return (
     <XStack
-      borderWidth="$px"
+      mt="$2"
       px="$3"
       py="$2"
       backgroundColor="$bgStrong"
-      borderColor="$borderSubdued"
       borderRadius="$2"
+      borderCurve="continuous"
       userSelect="none"
       onPress={onPress}
+      hoverStyle={{
+        bg: '$gray6',
+      }}
+      pressStyle={{
+        bg: '$gray7',
+      }}
       {...props}
     >
       <SizableText size="$bodyMdMedium" flex={1}>
-        {intl.formatMessage({ id: 'action__download' })}
+        {intl.formatMessage({ id: ETranslations.global_download })}
       </SizableText>
-      <XStack space="$1">
-        <Icon name="AppleBrand" color="$iconSubdued" size="$5" />
-        <Icon name="GooglePlayBrand" color="$iconSubdued" size="$5" />
-        <Icon name="ChromeBrand" color="$iconSubdued" size="$5" />
+      <XStack gap="$1" alignItems="center">
+        <Icon name="AppleBrand" size="$5" y={-2} color="$iconSubdued" />
+        <Icon name="GooglePlayBrand" size="$4.5" color="$iconSubdued" />
+        <Icon name="ChromeBrand" size="$4.5" color="$iconSubdued" />
       </XStack>
     </XStack>
   );
@@ -136,6 +150,9 @@ export function DesktopLeftSideBar({
 
   const sidebarWidth = getSizeTokens.sideBarWidth.val;
 
+  const { gtMd } = useMedia();
+  const isShowWebTabBar =
+    platformEnv.isDesktop || (platformEnv.isNative && gtMd);
   const tabs = useMemo(
     () =>
       routes.map((route, index) => {
@@ -159,7 +176,7 @@ export function DesktopLeftSideBar({
           }
         };
 
-        if (platformEnv.isDesktop && route.name === extraConfig?.name) {
+        if (isShowWebTabBar && route.name === extraConfig?.name) {
           return (
             <YStack flex={1} key={route.key}>
               <Portal.Container name={Portal.Constant.WEB_TAB_BAR} />
@@ -183,6 +200,7 @@ export function DesktopLeftSideBar({
       state.index,
       state.key,
       descriptors,
+      isShowWebTabBar,
       extraConfig?.name,
       isCollapse,
       navigation,
@@ -209,21 +227,39 @@ export function DesktopLeftSideBar({
         <DesktopDragZoneAbsoluteBar
           position="relative"
           testID="Desktop-AppSideBar-DragZone"
+          h="$10"
         />
       ) : null}
       <YStack
+        position="relative"
         flex={1}
         testID="Desktop-AppSideBar-Content-Container"
-        // Need to replaced by HeaderHeightContext
-        $platform-web={{
-          h: platformEnv.isDesktopMac ? 'calc(100vh - 64px)' : '100vh',
-        }}
       >
-        <OneKeyLogo />
-        <YStack flex={1} p="$3">
-          {tabs}
-          <DownloadButton mt="auto" />
-        </YStack>
+        <MotiView
+          animate={{ left: isCollapse ? -sidebarWidth : 0 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: sidebarWidth,
+            bottom: 0,
+          }}
+          transition={{
+            duration: 200,
+            type: 'timing',
+          }}
+        >
+          <YStack flex={1}>
+            <OneKeyLogo />
+            <YStack flex={1} p="$3">
+              {tabs}
+              <Stack mt="auto">
+                <Portal name={EPortalContainerConstantName.SIDEBAR_BANNER} />
+                <DownloadButton />
+              </Stack>
+            </YStack>
+          </YStack>
+        </MotiView>
       </YStack>
     </MotiView>
   );

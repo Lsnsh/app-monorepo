@@ -4,14 +4,20 @@ import BigNumber from 'bignumber.js';
 
 import { SizableText, YStack } from '@onekeyhq/components';
 import { AmountInput } from '@onekeyhq/kit/src/components/AmountInput';
+import {
+  useRateDifferenceAtom,
+  useSwapAlertsAtom,
+} from '@onekeyhq/kit/src/states/jotai/contexts/swap';
 import { useSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import accountUtils from '@onekeyhq/shared/src/utils/accountUtils';
 import type { ISwapToken } from '@onekeyhq/shared/types/swap/types';
 import {
   ESwapDirectionType,
   ESwapRateDifferenceUnit,
 } from '@onekeyhq/shared/types/swap/types';
 
-import { useSwapActionState } from '../../hooks/useSwapState';
+import { useSwapAddressInfo } from '../../hooks/useSwapAccount';
 import { useSwapSelectedTokenInfo } from '../../hooks/useSwapTokens';
 
 import SwapAccountAddressContainer from './SwapAccountAddressContainer';
@@ -40,12 +46,14 @@ const SwapInputContainer = ({
   onBalanceMaxPress,
   balance,
 }: ISwapInputContainerProps) => {
-  const { isLoading } = useSwapSelectedTokenInfo({
+  useSwapSelectedTokenInfo({
     token,
     type: direction,
   });
   const [settingsPersistAtom] = useSettingsPersistAtom();
-  const swapActionState = useSwapActionState();
+  const [alerts] = useSwapAlertsAtom();
+  const { address, accountInfo } = useSwapAddressInfo(direction);
+  const [rateDifference] = useRateDifferenceAtom();
   const amountPrice = useMemo(() => {
     if (!token?.price) return '0.0';
     const tokenPriceBN = new BigNumber(token.price ?? 0);
@@ -59,36 +67,42 @@ const SwapInputContainer = ({
 
   const fromInputHasError = useMemo(
     () =>
-      swapActionState.alerts?.some((item) => item.inputShowError) &&
-      direction === ESwapDirectionType.FROM,
-    [direction, swapActionState.alerts],
+      (alerts?.states.some((item) => item.inputShowError) &&
+        direction === ESwapDirectionType.FROM) ||
+      (!address &&
+        (accountUtils.isHdWallet({ walletId: accountInfo?.wallet?.id }) ||
+          accountUtils.isHwWallet({ walletId: accountInfo?.wallet?.id }) ||
+          accountUtils.isQrWallet({ walletId: accountInfo?.wallet?.id }))),
+    [alerts?.states, direction, address, accountInfo],
   );
 
   const valueMoreComponent = useMemo(() => {
-    if (swapActionState.rateDifference && direction === ESwapDirectionType.TO) {
+    if (rateDifference && direction === ESwapDirectionType.TO) {
       let color = '$textSubdued';
-      if (
-        swapActionState.rateDifference.unit === ESwapRateDifferenceUnit.NEGATIVE
-      ) {
+      if (inputLoading) {
+        color = '$textPlaceholder';
+      }
+      if (rateDifference.unit === ESwapRateDifferenceUnit.NEGATIVE) {
         color = '$textCritical';
       }
-      if (
-        swapActionState.rateDifference.unit === ESwapRateDifferenceUnit.POSITIVE
-      ) {
+      if (rateDifference.unit === ESwapRateDifferenceUnit.POSITIVE) {
         color = '$textSuccess';
       }
       return (
         <SizableText size="$bodyMd" color={color}>
-          {swapActionState.rateDifference.value}
+          {rateDifference.value}
         </SizableText>
       );
     }
     return null;
-  }, [direction, swapActionState.rateDifference]);
+  }, [direction, inputLoading, rateDifference]);
 
   return (
     <YStack>
-      <SwapAccountAddressContainer type={direction} />
+      <SwapAccountAddressContainer
+        type={direction}
+        onClickNetwork={onSelectToken}
+      />
       <AmountInput
         onChange={onAmountChange}
         value={amountValue}
@@ -96,18 +110,29 @@ const SwapInputContainer = ({
         balanceProps={{
           value: balance,
           onPress: onBalanceMaxPress,
-          loading: token && isLoading,
         }}
         valueProps={{
           value: amountPrice,
-          loading: inputLoading,
+          color:
+            inputLoading && direction === ESwapDirectionType.TO
+              ? '$textPlaceholder'
+              : undefined,
           currency: settingsPersistAtom.currencyInfo.symbol,
           moreComponent: valueMoreComponent,
         }}
         inputProps={{
-          loading: inputLoading,
           placeholder: '0.0',
           readOnly: direction === ESwapDirectionType.TO,
+          color:
+            direction === ESwapDirectionType.TO && inputLoading
+              ? '$textPlaceholder'
+              : undefined,
+          style:
+            !platformEnv.isNative && direction === ESwapDirectionType.TO
+              ? ({
+                  caretColor: 'transparent',
+                } as any)
+              : undefined,
         }}
         tokenSelectorTriggerProps={{
           loading: selectTokenLoading,

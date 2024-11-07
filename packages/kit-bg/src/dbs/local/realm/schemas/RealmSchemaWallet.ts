@@ -17,19 +17,25 @@ class RealmSchemaWallet extends RealmObjectBase<IDBWallet> {
 
   public accounts?: string[];
 
-  public nextIndex!: number;
-
   public walletNo!: number;
 
-  public nextAccountIds?: Realm.Dictionary<number>;
+  public walletOrderSaved?: number;
+
+  public nextIds?: Realm.Dictionary<number>;
 
   public associatedDevice?: string;
-
-  public deviceType?: string;
 
   public isTemp?: boolean;
 
   public passphraseState?: string;
+
+  public firstEvmAddress?: string;
+
+  public hash?: string;
+
+  public xfp?: string;
+
+  public airGapAccountsInfoRaw?: string;
 
   public static override schema: Realm.ObjectSchema = {
     name: ELocalDBStoreNames.Wallet,
@@ -41,17 +47,20 @@ class RealmSchemaWallet extends RealmObjectBase<IDBWallet> {
       type: 'string',
       backuped: { type: 'bool', default: false },
       accounts: 'string?[]',
-      nextIndex: { type: 'int', default: 0 },
       walletNo: 'int',
-      nextAccountIds: {
+      walletOrderSaved: 'float?',
+      nextIds: {
         type: 'dictionary',
         default: {},
         objectType: 'int',
       },
       associatedDevice: 'string?',
-      deviceType: 'string?',
       isTemp: { type: 'bool', default: false },
       passphraseState: 'string?',
+      firstEvmAddress: 'string?',
+      hash: 'string?',
+      xfp: 'string?',
+      airGapAccountsInfoRaw: 'string?',
     },
   };
 
@@ -62,17 +71,19 @@ class RealmSchemaWallet extends RealmObjectBase<IDBWallet> {
       avatar: this.avatar,
       type: this.type,
       backuped: this.backuped || false,
-      // convert RealmDB list to array
+      // convert RealmDB list to JS plain array
       accounts: Array.from(this.accounts || []),
-      nextIndex: this.nextIndex,
       walletNo: this.walletNo,
-      nextAccountIds: Object.fromEntries(
-        Object.entries(Object(this.nextAccountIds)),
-      ),
+      walletOrderSaved: this.walletOrderSaved,
+      // convert RealmDB dictionary to JS plain object
+      nextIds: (this.nextIds?.toJSON() as any) || {},
       associatedDevice: this.associatedDevice,
-      deviceType: this.deviceType,
       isTemp: this.isTemp,
       passphraseState: this.passphraseState,
+      firstEvmAddress: this.firstEvmAddress,
+      hash: this.hash,
+      xfp: this.xfp,
+      airGapAccountsInfoRaw: this.airGapAccountsInfoRaw,
     };
   }
 }

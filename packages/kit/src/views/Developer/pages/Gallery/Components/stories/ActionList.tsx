@@ -5,6 +5,7 @@ import {
   Stack,
   YStack,
 } from '@onekeyhq/components';
+import { shortcutsKeys } from '@onekeyhq/shared/src/shortcuts/shortcutsKeys.enum';
 
 import { Layout } from './utils/Layout';
 
@@ -25,15 +26,18 @@ const ActionListDemo1 = () => (
       {
         label: 'Action2',
         icon: 'PlaceholderOutline',
-        onPress: () => {
-          console.log('action2');
+        onPress: (close) => {
+          setTimeout(() => {
+            console.log('action2');
+            close();
+          }, 3500);
         },
       },
       {
         label: 'Action3',
         icon: 'PlaceholderOutline',
         onPress: () => {
-          console.log('action2');
+          console.log('action3');
         },
         disabled: true,
       },
@@ -42,7 +46,7 @@ const ActionListDemo1 = () => (
 );
 
 const ActionListPlacement = () => (
-  <YStack space="$2">
+  <YStack gap="$2">
     <ActionList
       title="right(Web Only)"
       placement="top"
@@ -163,6 +167,7 @@ const ActionListDemo3 = () => (
           {
             label: 'Action2',
             icon: 'PlaceholderOutline',
+            shortcutKeys: [shortcutsKeys.CmdOrCtrl, 'k'],
             onPress: () => {
               console.log('action2');
             },
@@ -218,7 +223,7 @@ const ActionListGallery = () => (
       {
         title: 'Simple',
         element: (
-          <Stack space="$1">
+          <Stack gap="$1">
             <ActionListDemo1 />
           </Stack>
         ),
@@ -226,7 +231,7 @@ const ActionListGallery = () => (
       {
         title: 'Placement',
         element: (
-          <Stack space="$1">
+          <Stack gap="$1">
             <ActionListPlacement />
           </Stack>
         ),
@@ -234,16 +239,59 @@ const ActionListGallery = () => (
       {
         title: 'Sections',
         element: (
-          <Stack space="$1">
+          <Stack gap="$1">
             <ActionListDemo2 />
             <ActionListDemo3 />
           </Stack>
         ),
       },
       {
+        title: 'shortcuts',
+        element: (
+          <ActionList
+            title="Action List(Close demo)"
+            renderTrigger={
+              <Button onPress={() => console.log('trigger')}>
+                Action List
+              </Button>
+            }
+            sections={[
+              {
+                items: [
+                  {
+                    label: 'just close it',
+                    icon: 'PlaceholderOutline',
+                    shortcutKeys: [
+                      shortcutsKeys.CmdOrCtrl,
+                      shortcutsKeys.Alt,
+                      'k',
+                    ],
+                    onPress: () => {
+                      console.log('action1');
+                    },
+                  },
+                  {
+                    label: 'async action(fail)',
+                    icon: 'PlaceholderOutline',
+                    shortcutKeys: [shortcutsKeys.CmdOrCtrl, 'o'],
+                    onPress: () =>
+                      new Promise((resolve) => {
+                        setTimeout(() => {
+                          alert('fail');
+                          resolve(false);
+                        }, 1000);
+                      }),
+                  },
+                ],
+              },
+            ]}
+          />
+        ),
+      },
+      {
         title: 'Long Press',
         element: (
-          <Stack space="$1">
+          <Stack gap="$1">
             <Button
               onLongPress={() => {
                 ActionList.show({

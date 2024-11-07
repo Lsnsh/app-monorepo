@@ -1,9 +1,13 @@
 import { memo, useCallback, useMemo } from 'react';
 
+import { useIntl } from 'react-intl';
+
+import { NumberSizeableText } from '@onekeyhq/components';
 import {
   useSwapApproveAllowanceSelectOpenAtom,
   useSwapQuoteApproveAllowanceUnLimitAtom,
 } from '@onekeyhq/kit/src/states/jotai/contexts/swap';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import type { IAllowanceResult } from '@onekeyhq/shared/types/swap/types';
 import { ESwapApproveAllowanceType } from '@onekeyhq/shared/types/swap/types';
 
@@ -20,6 +24,7 @@ const SwapApproveAllowanceSelectContainer = ({
   fromTokenSymbol,
   isLoading,
 }: ISwapApproveAllowanceSelectProps) => {
+  const intl = useIntl();
   const [
     swapQuoteApproveAllowanceUnLimit,
     setSwapQuoteApproveAllowanceUnLimit,
@@ -29,15 +34,25 @@ const SwapApproveAllowanceSelectContainer = ({
   const approveAllowanceSelectItems = useMemo(
     () => [
       {
-        label: `${allowanceResult.amount} ${fromTokenSymbol}`,
+        label: (
+          <NumberSizeableText
+            size="$bodyMdMedium"
+            formatter="balance"
+            formatterOptions={{ tokenSymbol: fromTokenSymbol }}
+          >
+            {allowanceResult.amount}
+          </NumberSizeableText>
+        ) as unknown as string,
         value: ESwapApproveAllowanceType.PRECISION,
       },
       {
-        label: 'Unlimited',
+        label: intl.formatMessage({
+          id: ETranslations.swap_page_provider_approve_amount_un_limit,
+        }),
         value: ESwapApproveAllowanceType.UN_LIMIT,
       },
     ],
-    [fromTokenSymbol, allowanceResult],
+    [allowanceResult.amount, fromTokenSymbol, intl],
   );
 
   const onSelectAllowanceValue = useCallback(

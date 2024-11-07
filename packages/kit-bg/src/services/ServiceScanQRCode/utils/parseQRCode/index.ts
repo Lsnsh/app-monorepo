@@ -1,25 +1,29 @@
-import * as handlers from './handlers';
+import { defaultLogger } from '@onekeyhq/shared/src/logger/logger';
+
+import { PARSE_HANDLERS, PARSE_HANDLER_NAMES } from './handlers';
 import * as deeplinkHandler from './handlers/deeplink';
 import * as urlHandler from './handlers/url';
 import { EQRCodeHandlerType } from './type';
 
 import type {
   IBaseValue,
-  IQRCodeHandler,
   IQRCodeHandlerParse,
   IQRCodeHandlerParseResult,
 } from './type';
-
-const handlerList = handlers as Record<string, IQRCodeHandler<IBaseValue>>;
 
 export const parseQRCode: IQRCodeHandlerParse<IBaseValue> = async (
   value,
   options,
 ) => {
+  const handlerNames = options?.handlers ?? PARSE_HANDLER_NAMES.all;
   let result: IQRCodeHandlerParseResult<IBaseValue> | undefined;
-  const urlResult = await urlHandler.url(value);
-  const deeplinkResult = await deeplinkHandler.deeplink(value, { urlResult });
-  for (const handler of Object.values(handlerList)) {
+  const urlResult = await urlHandler.default(value);
+  const deeplinkResult = await deeplinkHandler.default(value, {
+    urlResult,
+  });
+
+  for (const handlerName of handlerNames) {
+    const handler = PARSE_HANDLERS[handlerName];
     try {
       const itemResult = await handler(value, {
         ...options,
@@ -34,7 +38,7 @@ export const parseQRCode: IQRCodeHandlerParse<IBaseValue> = async (
         break;
       }
     } catch (e) {
-      console.log('parse next');
+      console.warn('parse next', e);
     }
   }
   if (!result) {
@@ -42,5 +46,12 @@ export const parseQRCode: IQRCodeHandlerParse<IBaseValue> = async (
       urlResult ?? { type: EQRCodeHandlerType.UNKNOWN, data: value };
     result = { ...itemResult, raw: value };
   }
+  if (
+    !options?.qrWalletScene &&
+    result.type !== EQRCodeHandlerType.ANIMATION_CODE
+  ) {
+    defaultLogger.scanQrCode.parseQrCode.parsedQrCode(JSON.stringify(result));
+  }
+
   return result;
 };

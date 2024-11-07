@@ -5,6 +5,7 @@ import { AnimatePresence } from '@onekeyhq/components';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import { useAppIsLockedAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import extUtils, { EXT_HTML_FILES } from '@onekeyhq/shared/src/utils/extUtils';
 
 import PasswordVerifyContainer from '../../../components/Password/container/PasswordVerifyContainer';
 
@@ -22,14 +23,16 @@ const useWebLockCheck = (isLocked: boolean) => {
   const checkIsLockContainerExist = useCallback(() => {
     if (lockContainerRef?.current && lockedRef.current) {
       if (!document.body.contains(lockContainerRef.current)) {
-        window.location.reload();
+        globalThis.location.reload();
       }
-      setTimeout(checkIsLockContainerExist, 500);
+      setTimeout(checkIsLockContainerExist, 300);
     }
   }, []);
   useEffect(() => {
-    if (platformEnv.isRuntimeBrowser && isLocked) {
-      checkIsLockContainerExist();
+    if (!platformEnv.isNative && isLocked) {
+      setTimeout(() => {
+        checkIsLockContainerExist();
+      });
     }
   }, [checkIsLockContainerExist, isLocked]);
   return lockContainerRef;
@@ -85,9 +88,11 @@ export function AppStateLockContainer({
             passwordVerifyContainer={
               <Suspense>
                 <PasswordVerifyContainer
+                  name="lock"
                   onLayout={handleLayout}
                   onVerifyRes={async (data) => {
-                    if (data) {
+                    // isExt support lock without password
+                    if (data || platformEnv.isExtension) {
                       await handleUnlock();
                     }
                   }}

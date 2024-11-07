@@ -1,6 +1,9 @@
 /* eslint-disable max-classes-per-file */
 import { HardwareErrorCode } from '@onekeyfe/hd-shared';
+import { get, uniq } from 'lodash';
 
+import { EAppEventBusNames, appEventBus } from '../../eventBus/appEventBus';
+import { ETranslations } from '../../locale';
 import {
   ECustomOneKeyHardwareError,
   EOneKeyErrorClassNames,
@@ -12,24 +15,30 @@ import { OneKeyError } from './baseErrors';
 import type {
   IOneKeyError,
   IOneKeyErrorI18nInfo,
+  IOneKeyHardwareErrorPayload,
   IOneKeyJsError,
 } from '../types/errorTypes';
 
+export type IOneKeyErrorHardwareProps = Omit<IOneKeyError, 'payload'> & {
+  payload: IOneKeyHardwareErrorPayload; // raw payload from hardware sdk error response
+};
 export class OneKeyHardwareError<
   I18nInfoT = IOneKeyErrorI18nInfo | any,
   DataT = IOneKeyJsError | any,
 > extends OneKeyError<I18nInfoT, DataT> {
   override className = EOneKeyErrorClassNames.OneKeyHardwareError;
 
+  $isHardwareError = true;
+
   reconnect: boolean | undefined; // TODO move to $$config
 }
 
 export class InvalidPIN extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'HardwareInvalidPIN',
-        defaultKey: 'msg__hardware_invalid_pin_error',
+        defaultKey: ETranslations.enter_pin_invalid_pin,
         defaultAutoToast: true,
       }),
     );
@@ -37,15 +46,15 @@ export class InvalidPIN extends OneKeyHardwareError {
 
   override code = HardwareErrorCode.PinInvalid;
 
-  // override key: ILocaleIds = 'msg__hardware_invalid_pin_error';
+  // override key: ETranslations = 'msg__hardware_invalid_pin_error';
 }
 
 export class InvalidPassphrase extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'InvalidPassphrase',
-        defaultKey: 'msg__hardware_device_passphrase_state_error',
+        defaultKey: ETranslations.hardware_device_passphrase_state_error,
       }),
     );
   }
@@ -54,11 +63,11 @@ export class InvalidPassphrase extends OneKeyHardwareError {
 }
 
 export class DeviceNotOpenedPassphrase extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'DeviceNotOpenedPassphrase',
-        defaultKey: 'msg__hardware_not_opened_passphrase',
+        defaultKey: ETranslations.hardware_not_opened_passphrase,
         defaultAutoToast: true,
       }),
     );
@@ -68,11 +77,11 @@ export class DeviceNotOpenedPassphrase extends OneKeyHardwareError {
 }
 
 export class DeviceOpenedPassphrase extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'DeviceOpenedPassphrase',
-        defaultKey: 'msg__hardware_opened_passphrase',
+        defaultKey: ETranslations.hardware_opened_passphrase,
       }),
     );
   }
@@ -80,12 +89,26 @@ export class DeviceOpenedPassphrase extends OneKeyHardwareError {
   override code = HardwareErrorCode.DeviceOpenedPassphrase;
 }
 
+export class PinCancelled extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'PinCancelled',
+        defaultKey: ETranslations.feedback_pin_verification_cancelled,
+        // defaultAutoToast: true,
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.PinCancelled;
+}
+
 export class UserCancel extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'UserCancel',
-        defaultKey: 'msg__hardware_user_cancel_error',
+        defaultKey: ETranslations.hardware_user_cancel_error,
         // defaultAutoToast: true,
       }),
     );
@@ -95,25 +118,27 @@ export class UserCancel extends OneKeyHardwareError {
 }
 
 export class UserCancelFromOutside extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'UserCancelFromOutside',
-        defaultKey: 'msg__hardware_user_cancel_error',
+        defaultKey: ETranslations.hardware_user_cancel_error,
         // defaultAutoToast: true,
       }),
     );
   }
 
   override code = HardwareErrorCode.DeviceInterruptedFromOutside;
+
+  override className = EOneKeyErrorClassNames.HardwareUserCancelFromOutside;
 }
 
 export class UnknownMethod extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'UnknownMethod',
-        defaultKey: 'msg__hardware_unknown_message_error',
+        defaultKey: ETranslations.hardware_unknown_message_error,
       }),
     );
   }
@@ -121,23 +146,12 @@ export class UnknownMethod extends OneKeyHardwareError {
   override code = HardwareErrorCode.RuntimeError;
 }
 
-export class ConnectTimeout extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
-    super(
-      normalizeErrorProps(props, {
-        defaultMessage: 'ConnectTimeout',
-        defaultKey: 'msg__hardware_connect_timeout_error',
-      }),
-    );
-  }
-}
-
 export class NeedOneKeyBridge extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'NeedOneKeyBridge',
-        defaultKey: 'modal__need_install_onekey_bridge',
+        defaultKey: ETranslations.onboarding_install_onekey_bridge_help_text,
       }),
     );
   }
@@ -145,12 +159,49 @@ export class NeedOneKeyBridge extends OneKeyHardwareError {
   override code = ECustomOneKeyHardwareError.NeedOneKeyBridge;
 }
 
+export class NeedOneKeyBridgeUpgrade extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'NeedOneKeyBridgeUpgrade',
+      }),
+    );
+  }
+
+  override code = ECustomOneKeyHardwareError.NeedOneKeyBridgeUpgrade;
+}
+
+export class NeedFirmwareUpgradeFromWeb extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'NeedFirmwareUpgradeFromWeb',
+        defaultKey: ETranslations.update_update_in_official_web_tool,
+      }),
+    );
+  }
+
+  override code = ECustomOneKeyHardwareError.NeedFirmwareUpgradeFromWeb;
+}
+
+export class FirmwareUpdateBatteryTooLow extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultKey: ETranslations.update_insufficient_battery_power,
+      }),
+    );
+  }
+
+  override code = ECustomOneKeyHardwareError.FirmwareUpdateBatteryTooLow;
+}
+
 export class BridgeNetworkError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'BridgeNetworkError',
-        defaultKey: 'msg__hardware_bridge_network_error',
+        defaultKey: ETranslations.update_bridge_network_error,
       }),
     );
   }
@@ -159,11 +210,11 @@ export class BridgeNetworkError extends OneKeyHardwareError {
 }
 
 export class BridgeTimeoutError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'BridgeTimeoutError',
-        defaultKey: 'msg__hardware_bridge_timeout',
+        defaultKey: ETranslations.update_bridge_timeout_error,
       }),
     );
   }
@@ -172,11 +223,11 @@ export class BridgeTimeoutError extends OneKeyHardwareError {
 }
 
 export class BridgeTimeoutErrorForDesktop extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'BridgeTimeoutErrorForDesktop',
-        defaultKey: 'msg__hardware_bridge_timeout_for_desktop',
+        defaultKey: ETranslations.global_connection_failed_usb_help_text,
       }),
     );
   }
@@ -185,11 +236,12 @@ export class BridgeTimeoutErrorForDesktop extends OneKeyHardwareError {
 }
 
 export class ConnectTimeoutError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  // defaultKey: 'msg__hardware_connect_timeout_error',
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'ConnectTimeoutError',
-        defaultKey: 'msg__hardware_polling_connect_timeout_error',
+        defaultKey: ETranslations.global_connection_failed_help_text,
         // defaultAutoToast: true,
       }),
     );
@@ -198,12 +250,24 @@ export class ConnectTimeoutError extends OneKeyHardwareError {
   override code = HardwareErrorCode.PollingTimeout;
 }
 
+export class DeviceMethodCallTimeout extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'DeviceMethodCallTimeout',
+      }),
+    );
+  }
+
+  override code = ECustomOneKeyHardwareError.DeviceMethodCallTimeout;
+}
+
 export class ConnectPollingStopError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'ConnectPollingStopError',
-        defaultKey: 'msg__hardware_polling_connect_timeout_error',
+        defaultKey: ETranslations.feedback_hw_polling_time_out,
         // defaultAutoToast: true,
       }),
     );
@@ -214,11 +278,11 @@ export class ConnectPollingStopError extends OneKeyHardwareError {
 
 // 设备没有配对成功
 export class DeviceNotBonded extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'DeviceNotBonded',
-        defaultKey: 'msg__hardware_bluetooth_not_paired_error',
+        defaultKey: ETranslations.feedback_bluetooth_unparied,
       }),
     );
   }
@@ -228,11 +292,11 @@ export class DeviceNotBonded extends OneKeyHardwareError {
 
 // 设备配对失败
 export class DeviceBondError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'DeviceBondError',
-        defaultKey: 'msg__hardware_bluetooth_pairing_failed',
+        defaultKey: ETranslations.feedback_bluetooth_pairing_failed,
       }),
     );
   }
@@ -242,11 +306,11 @@ export class DeviceBondError extends OneKeyHardwareError {
 
 // 设备没有打开蓝牙
 export class NeedBluetoothTurnedOn extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'NeedBluetoothTurnedOn',
-        defaultKey: 'msg__hardware_bluetooth_need_turned_on_error',
+        defaultKey: ETranslations.hardware_bluetooth_need_turned_on_error,
       }),
     );
   }
@@ -256,11 +320,11 @@ export class NeedBluetoothTurnedOn extends OneKeyHardwareError {
 
 // 没有使用蓝牙的权限
 export class NeedBluetoothPermissions extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'NeedBluetoothPermissions',
-        defaultKey: 'msg__hardware_bluetooth_requires_permission_error',
+        defaultKey: ETranslations.hardware_bluetooth_requires_permission_error,
       }),
     );
   }
@@ -269,11 +333,11 @@ export class NeedBluetoothPermissions extends OneKeyHardwareError {
 }
 
 export class BleLocationServiceError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'BleLocationServiceError',
-        defaultKey: 'msg__hardware_device_ble_location_disabled',
+        defaultKey: ETranslations.hardware_device_ble_location_disabled,
       }),
     );
   }
@@ -282,11 +346,11 @@ export class BleLocationServiceError extends OneKeyHardwareError {
 }
 
 export class BleWriteCharacteristicError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'BleWriteCharacteristicError',
-        defaultKey: 'msg__hardware_device_need_restart',
+        defaultKey: ETranslations.hardware_device_need_restart,
       }),
     );
   }
@@ -295,11 +359,11 @@ export class BleWriteCharacteristicError extends OneKeyHardwareError {
 }
 
 export class BleScanError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'BleScanError',
-        defaultKey: 'msg__hardware_device_ble_scan_error',
+        defaultKey: ETranslations.hardware_device_ble_scan_error,
       }),
     );
   }
@@ -308,11 +372,11 @@ export class BleScanError extends OneKeyHardwareError {
 }
 
 export class BleAlreadyConnectedError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'BleAlreadyConnectedError',
-        defaultKey: 'msg__hardware_device_ble_already_connected',
+        defaultKey: ETranslations.hardware_device_ble_already_connected,
       }),
     );
   }
@@ -320,12 +384,25 @@ export class BleAlreadyConnectedError extends OneKeyHardwareError {
   override code = HardwareErrorCode.BleAlreadyConnected;
 }
 
+export class BleCharacteristicNotifyChangeFailure extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'BleCharacteristicNotifyChangeFailure',
+        defaultKey: ETranslations.feedback_bluetooth_issue,
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.BleCharacteristicNotifyChangeFailure;
+}
+
 export class OpenBlindSign extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'OpenBlindSign',
-        defaultKey: 'msg__hardware_open_blind_sign_error',
+        defaultKey: ETranslations.hardware_open_blind_sign_error,
       }),
     );
   }
@@ -333,13 +410,44 @@ export class OpenBlindSign extends OneKeyHardwareError {
   override code = HardwareErrorCode.BlindSignDisabled;
 }
 
-export class FirmwareVersionTooLow extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+export class ForbiddenKeyPathError extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
-        defaultMessage: 'FirmwareVersionTooLow',
-        defaultKey: 'msg__hardware_version_need_upgrade_error',
+        defaultMessage: 'ForbiddenKeyPath',
+        defaultKey: ETranslations.feedback_forbidden_key_path_error,
       }),
+    );
+  }
+
+  override code = HardwareErrorCode.RuntimeError;
+}
+
+export class StringOverflowError extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'StringOverflowError',
+        defaultKey: ETranslations.global_hardware_name_input_max,
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.RuntimeError;
+}
+
+export class FirmwareVersionTooLow extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(
+        {
+          info: { 'version': get(props, 'payload.params.require', '') },
+        },
+        {
+          defaultMessage: 'FirmwareVersionTooLow',
+          defaultKey: ETranslations.hardware_version_need_upgrade_error,
+        },
+      ),
     );
   }
 
@@ -350,24 +458,57 @@ export class FirmwareVersionTooLow extends OneKeyHardwareError {
   // }
 }
 
-export class NotInBootLoaderMode extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+export class DeviceInitializeFailed extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
-        defaultMessage: 'NotInBootLoaderMode',
+        defaultMessage: 'DeviceInitializeFailed',
+        defaultKey: ETranslations.hardware_connect_timeout_error,
+        // defaultAutoToast: true,
       }),
     );
   }
 
-  override code = HardwareErrorCode.DeviceUnexpectedBootloaderMode;
+  override code = HardwareErrorCode.DeviceInitializeFailed;
+}
+
+export class NotInBootLoaderMode extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'NotInBootLoaderMode',
+        defaultKey: ETranslations.update_device_in_bootloader_mode,
+      }),
+    );
+
+    if (props?.payload?.connectId) {
+      appEventBus.emit(EAppEventBusNames.ShowFirmwareUpdateFromBootloaderMode, {
+        connectId: props?.payload?.connectId,
+      });
+    }
+  }
+
+  override code = HardwareErrorCode.NotAllowInBootloaderMode;
+}
+
+export class DeviceDetectInBootloaderMode extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'DeviceDetectInBootloaderMode',
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.DeviceDetectInBootloaderMode;
 }
 
 export class FirmwareDownloadFailed extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'FirmwareDownloadFailed',
-        defaultKey: 'msg__hardware_firmware_download_error',
+        defaultKey: ETranslations.hardware_firmware_download_error,
       }),
     );
   }
@@ -378,11 +519,13 @@ export class FirmwareDownloadFailed extends OneKeyHardwareError {
 }
 
 export class FirmwareUpdateManuallyEnterBoot extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
+      // You need to manually enter boot.
       normalizeErrorProps(props, {
         defaultMessage: 'FirmwareUpdateManuallyEnterBoot',
-        defaultKey: 'msg__hardware_manually_enter_boot',
+        defaultKey: ETranslations.hardware_manually_enter_boot,
+        defaultAutoToast: true,
       }),
     );
   }
@@ -393,11 +536,11 @@ export class FirmwareUpdateManuallyEnterBoot extends OneKeyHardwareError {
 }
 
 export class FirmwareUpdateAutoEnterBootFailure extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'FirmwareUpdateAutoEnterBootFailure',
-        defaultKey: 'msg__hardware_enter_boot_failure',
+        defaultKey: ETranslations.hardware_enter_boot_failure,
       }),
     );
   }
@@ -408,11 +551,12 @@ export class FirmwareUpdateAutoEnterBootFailure extends OneKeyHardwareError {
 }
 
 export class FirmwareUpdateLimitOneDevice extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'FirmwareUpdateLimitOneDevice',
-        defaultKey: 'modal__only_one_device_can_be_connected_desc',
+        defaultKey:
+          ETranslations.hardware_only_one_device_can_be_connected_desc,
       }),
     );
   }
@@ -423,12 +567,25 @@ export class FirmwareUpdateLimitOneDevice extends OneKeyHardwareError {
   override reconnect = true;
 }
 
+export class UseDesktopToUpdateFirmware extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'UseDesktopToUpdateFirmware',
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.UseDesktopToUpdateFirmware;
+}
+
 export class NewFirmwareUnRelease extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'NewFirmwareUnRelease',
-        defaultKey: 'msg__str_not_supported_by_hardware_wallets',
+        defaultKey:
+          ETranslations.hardware_str_not_supported_by_hardware_wallets,
       }),
     );
   }
@@ -440,11 +597,11 @@ export class NewFirmwareUnRelease extends OneKeyHardwareError {
 }
 
 export class NewFirmwareForceUpdate extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'NewFirmwareForceUpdate',
-        defaultKey: 'msg__need_force_upgrade_firmware',
+        defaultKey: ETranslations.hardware_need_force_upgrade_firmware,
       }),
     );
   }
@@ -453,12 +610,12 @@ export class NewFirmwareForceUpdate extends OneKeyHardwareError {
 }
 
 export class DeviceNotSame extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'DeviceNotSame',
         defaultKey:
-          'msg__device_information_is_inconsistent_it_may_caused_by_device_reset',
+          ETranslations.hardware_device_information_is_inconsistent_it_may_caused_by_device_reset,
       }),
     );
   }
@@ -467,13 +624,13 @@ export class DeviceNotSame extends OneKeyHardwareError {
 }
 
 export class DeviceNotFound extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     // props?.message
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'DeviceNotFound',
-        defaultKey: 'msg__hardware_device_not_find_error',
-        defaultAutoToast: true,
+        defaultKey: ETranslations.hardware_device_not_find_error,
+        defaultAutoToast: false, // do not auto toast for DeviceNotFound, it's very common for silence call getFeatures
       }),
     );
   }
@@ -485,11 +642,13 @@ export class DeviceNotFound extends OneKeyHardwareError {
 }
 
 export class InitIframeLoadFail extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
+      // Hardware SDK initialization failed. Please check your network or switch the proxy then try again.
       normalizeErrorProps(props, {
         defaultMessage: 'InitIframeLoadFail',
-        defaultKey: 'msg__hardware_init_iframe_load_error',
+        defaultKey: ETranslations.global_network_error_help_text,
+        defaultAutoToast: true,
       }),
     );
   }
@@ -498,11 +657,11 @@ export class InitIframeLoadFail extends OneKeyHardwareError {
 }
 
 export class InitIframeTimeout extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'InitIframeTimeout',
-        defaultKey: 'msg__hardware_init_iframe_load_error',
+        defaultKey: ETranslations.global_network_error_help_text,
       }),
     );
   }
@@ -511,11 +670,11 @@ export class InitIframeTimeout extends OneKeyHardwareError {
 }
 
 export class NetworkError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'NetworkError',
-        defaultKey: 'title__no_connection_desc',
+        defaultKey: ETranslations.hardware_no_connection_desc,
       }),
     );
   }
@@ -526,12 +685,18 @@ export class NetworkError extends OneKeyHardwareError {
 }
 
 export class NotSupportPassphraseError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
-      normalizeErrorProps(props, {
-        defaultMessage: 'NotSupportPassphraseError',
-        defaultKey: 'msg__not_support_passphrase_need_upgrade',
-      }),
+      normalizeErrorProps(
+        {
+          info: { 'version': get(props, 'payload.params.require', '') },
+        },
+        {
+          defaultMessage: 'NotSupportPassphraseError',
+          defaultKey:
+            ETranslations.hardware_not_support_passphrase_need_upgrade,
+        },
+      ),
     );
   }
 
@@ -544,11 +709,11 @@ export class NotSupportPassphraseError extends OneKeyHardwareError {
 }
 
 export class FileAlreadyExistError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'FileAlreadyExistError',
-        defaultKey: 'msg__file_already_exists',
+        defaultKey: ETranslations.hardware_file_already_exists,
       }),
     );
   }
@@ -557,11 +722,11 @@ export class FileAlreadyExistError extends OneKeyHardwareError {
 }
 
 export class IncompleteFileError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'IncompleteFileError',
-        defaultKey: 'msg__incomplete_file',
+        defaultKey: ETranslations.hardware_incomplete_file,
       }),
     );
   }
@@ -570,11 +735,12 @@ export class IncompleteFileError extends OneKeyHardwareError {
 }
 
 export class NotInSigningModeError extends OneKeyHardwareError {
-  constructor(props?: IOneKeyError) {
+  constructor(props?: IOneKeyErrorHardwareProps) {
     super(
       normalizeErrorProps(props, {
         defaultMessage: 'NotInSigningModeError',
-        defaultKey: 'msg__transaction_signing_error_not_in_signing_mode',
+        defaultKey:
+          ETranslations.hardware_transaction_signing_error_not_in_signing_mode,
       }),
     );
   }
@@ -582,24 +748,81 @@ export class NotInSigningModeError extends OneKeyHardwareError {
   override code = HardwareErrorCode.NotInSigningMode;
 }
 
+export class DeviceDataOverload extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'DataOverloadError',
+        defaultKey: ETranslations.hardware_hardware_params_bytes_overload,
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.DataOverload;
+}
+
+export class DeviceDisconnectedError extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'DeviceDisconnectedError',
+        defaultKey: ETranslations.update_device_disconnected_desc,
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.BridgeDeviceDisconnected;
+}
+
+export class UnsupportedAddressTypeError extends OneKeyHardwareError {
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'UnsupportedAddressTypeError',
+        defaultKey:
+          ETranslations.feedback_hardware_unsupported_current_address_type,
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.RuntimeError;
+}
+
+// Communication exception 通信异常
+export class HardwareCommunicationError extends OneKeyHardwareError {
+  override className: EOneKeyErrorClassNames =
+    EOneKeyErrorClassNames.UnknownHardwareError;
+
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    super(
+      normalizeErrorProps(props, {
+        defaultMessage: 'CommunicationError',
+        defaultKey: ETranslations.hardware_device_need_restart,
+      }),
+    );
+  }
+
+  override code = HardwareErrorCode.BridgeNetworkError;
+}
+
 // UnknownHardware
 export class UnknownHardwareError extends OneKeyHardwareError {
   override className: EOneKeyErrorClassNames =
     EOneKeyErrorClassNames.UnknownHardwareError;
 
-  constructor(props?: IOneKeyError) {
-    const message = [
+  constructor(props?: IOneKeyErrorHardwareProps) {
+    const message = uniq([
       props?.payload?.error,
       props?.payload?.message, // use device raw error message as UnknownHardwareError message
       props?.message,
       props?.payload?.code,
-    ]
+    ])
       .filter(Boolean)
       .join(' : ');
     super(
       normalizeErrorProps(props, {
         defaultMessage: message || 'Unknown Hardware Error',
-        defaultKey: 'msg__hardware_default_error',
+        defaultKey: ETranslations.feedback_request_failed,
         alwaysAppendDefaultMessage: true,
         // defaultAutoToast: true,
       }),

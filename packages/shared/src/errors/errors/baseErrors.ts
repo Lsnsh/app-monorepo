@@ -3,10 +3,15 @@
 import { Web3RpcError } from '@onekeyfe/cross-inpage-provider-errors';
 import { isObject, isString } from 'lodash';
 
-import type { ILocaleIds } from '@onekeyhq/shared/src/locale';
-
 import type {
-  EOneKeyErrorClassNames,
+  ETranslations,
+  ETranslationsMock,
+} from '@onekeyhq/shared/src/locale';
+
+import { EOneKeyErrorClassNames } from '../types/errorTypes';
+
+import type { IOneKeyAPIBaseResponse } from '../../../types/request';
+import type {
   IOneKeyError,
   IOneKeyErrorI18nInfo,
   IOneKeyHardwareErrorPayload,
@@ -27,7 +32,8 @@ export class OneKeyError<
   className?: EOneKeyErrorClassNames;
 
   // i18n key
-  readonly key?: ILocaleIds = 'onekey_error' as ILocaleIds;
+  readonly key?: ETranslations | ETranslationsMock =
+    'onekey_error' as ETranslations;
 
   // i18n params
   readonly info?: I18nInfoT;
@@ -36,6 +42,8 @@ export class OneKeyError<
   payload: IOneKeyHardwareErrorPayload | undefined;
 
   autoToast?: boolean | undefined;
+
+  requestId?: string | undefined;
 
   constructor(
     errorProps?: IOneKeyError<I18nInfoT, DataT> | string,
@@ -48,6 +56,11 @@ export class OneKeyError<
     let infoData: I18nInfoT | undefined;
     let hardwareErrorPayload: IOneKeyHardwareErrorPayload | undefined;
     let autoToast: boolean | undefined;
+    let requestId: string | undefined;
+    let className: EOneKeyErrorClassNames | undefined;
+    let name: string | undefined;
+    let disableFallbackMessage: boolean | undefined;
+
     if (!isString(errorProps) && errorProps && isObject(errorProps)) {
       ({
         message: msg,
@@ -56,19 +69,27 @@ export class OneKeyError<
         info: infoData,
         key,
         autoToast,
+        requestId,
         payload: hardwareErrorPayload,
+        className,
+        name,
+        disableFallbackMessage,
       } = errorProps);
     } else {
       msg = isString(errorProps) ? errorProps : '';
-      code = -99999;
+      code = -99_999;
       infoData = info;
     }
     super(
-      code ?? -99999,
+      code ?? -99_999,
       // * empty string not allowed in Web3RpcError, give a fakeMessage by default
       // * can not access this.key before constructor
       msg ||
-        `Unknown Onekey Internal Error. ${[key].filter(Boolean).join(':')}`,
+        (disableFallbackMessage
+          ? ''
+          : `Unknown Onekey Internal Error. ${[key]
+              .filter(Boolean)
+              .join(':')}`),
       data,
     );
 
@@ -82,6 +103,13 @@ export class OneKeyError<
       this.payload = hardwareErrorPayload;
     }
     this.autoToast = autoToast;
+    this.requestId = requestId;
+    if (className) {
+      this.className = className;
+    }
+    if (name) {
+      this.name = name;
+    }
   }
 
   // for jest only: this is not stable, do not use it. may be different in compressed code
@@ -93,6 +121,7 @@ export class OneKeyError<
     const serialized: {
       code: number;
       message: string;
+      requestId?: string;
       data?: DataT;
       stack?: string;
     } = {
@@ -102,6 +131,9 @@ export class OneKeyError<
     if (this.data !== undefined) {
       serialized.data = this.data;
     }
+    if (this.requestId !== undefined) {
+      serialized.requestId = this.requestId;
+    }
     // TODO read error.stack cause app crash
     // if (this.stack) {
     //   // serialized.stack = this.stack;
@@ -110,4 +142,12 @@ export class OneKeyError<
 
     return serialized;
   }
+}
+
+export class OneKeyServerApiError extends OneKeyError<
+  any,
+  IOneKeyAPIBaseResponse
+> {
+  override className?: EOneKeyErrorClassNames | undefined =
+    EOneKeyErrorClassNames.OneKeyServerApiError;
 }

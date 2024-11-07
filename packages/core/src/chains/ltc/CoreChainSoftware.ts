@@ -14,6 +14,18 @@ import type {
 } from '../../types';
 
 export default class CoreChainSoftware extends CoreChainSoftwareBtc {
+  override async getCoinName() {
+    return Promise.resolve('LTC');
+  }
+
+  override async getXpubRegex() {
+    return '^([LM]tub|zpub)';
+  }
+
+  override async getXprvtRegex() {
+    return '^([LM]tpv|zprv)';
+  }
+
   override signMessage(payload: ICoreApiSignMsgPayload): Promise<string> {
     return super.signMessage(payload);
   }

@@ -1,7 +1,7 @@
 import { Dialog, Toast } from '@onekeyhq/components';
+import timerUtils from '@onekeyhq/shared/src/utils/timerUtils';
 
 import {
-  ConfirmOnDevice,
   ConfirmOnDeviceToastContent,
   ConfirmPassphrase,
   EnterPassphraseOnDevice,
@@ -49,18 +49,22 @@ export const ConfirmOnDeviceToast = async ({
   await event.run();
 };
 
-export const confirmOnDevice = async () => {
+export const confirmOnDeviceToastSample = async () => {
   const event = mockListenDeviceResult();
-  const dialog = Dialog.show({
-    title: 'Confirm on Device Sample',
+
+  const toast = Toast.show({
+    children: <ConfirmOnDeviceToastContent deviceType="pro" />,
     dismissOnOverlayPress: false,
-    showFooter: false,
-    renderContent: <ConfirmOnDevice />,
+    disableSwipeGesture: false,
+    onClose: async (params) => {
+      console.log('close ConfirmOnDeviceToastContent');
+    },
   });
+
   setTimeout(async () => {
     event.confirm();
-    await dialog.close();
-  }, 3500);
+    await toast.close();
+  }, timerUtils.getTimeDurationMs({ seconds: 35 }));
   await event.run();
 };
 
@@ -70,7 +74,7 @@ export const confirmPinOnDevice = async () => {
     title: 'Enter PIN on Device',
     showFooter: false,
     dismissOnOverlayPress: false,
-    renderContent: <EnterPinOnDevice />,
+    renderContent: <EnterPinOnDevice deviceType="pro" />,
     onClose: () => {
       console.log('close confirmPinOnDevice');
       event.cancel();
@@ -116,7 +120,7 @@ export const confirmPhraseOnDevice = async () => {
     title: 'Enter Passphrase on Device',
     showFooter: false,
     dismissOnOverlayPress: false,
-    renderContent: <EnterPassphraseOnDevice />,
+    renderContent: <EnterPassphraseOnDevice deviceType="pro" />,
     onClose: () => {
       console.log('close EnterPassphraseOnDevice');
       event.cancel();

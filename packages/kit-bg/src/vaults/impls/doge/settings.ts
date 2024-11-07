@@ -29,6 +29,13 @@ const settings: IVaultSettings = {
   coinTypeDefault: COINTYPE_DOGE,
   minTransferAmount: '0.01',
   utxoDustAmount: '0.0099999',
+  hasFrozenBalance: false,
+  showAddressType: false,
+  estimatedFeePollingInterval: 60,
+
+  dappInteractionEnabled: false,
+  mergeDeriveAssetsEnabled: false,
+  qrAccountEnabled: false,
 };
 
 export default Object.freeze(settings);

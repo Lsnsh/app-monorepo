@@ -1,9 +1,12 @@
 import { useCallback } from 'react';
 
-import { Divider, Icon, NumberSizeableText, Stack } from '@onekeyhq/components';
+import { useIntl } from 'react-intl';
+
+import { Icon, NumberSizeableText, Stack } from '@onekeyhq/components';
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
 import { useSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
 import { SEARCH_KEY_MIN_LENGTH } from '@onekeyhq/shared/src/consts/walletConsts';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import {
   EModalAssetListRoutes,
   EModalRoutes,
@@ -12,8 +15,6 @@ import {
 import useAppNavigation from '../../hooks/useAppNavigation';
 import { useActiveAccount } from '../../states/jotai/contexts/accountSelector';
 import {
-  useRiskyTokenListAtom,
-  useRiskyTokenListMapAtom,
   useSearchKeyAtom,
   useSmallBalanceTokenListAtom,
   useSmallBalanceTokenListMapAtom,
@@ -25,10 +26,11 @@ type IProps = {
 };
 
 function TokenListFooter(props: IProps) {
+  const intl = useIntl();
   const { tableLayout } = props;
   const navigation = useAppNavigation();
   const {
-    activeAccount: { account, network },
+    activeAccount: { account, network, wallet, deriveType, deriveInfo },
   } = useActiveAccount({ num: 0 });
 
   const [settings] = useSettingsPersistAtom();
@@ -39,12 +41,7 @@ function TokenListFooter(props: IProps) {
 
   const [smallBalanceTokensFiatValue] = useSmallBalanceTokensFiatValueAtom();
 
-  const [riskyTokenList] = useRiskyTokenListAtom();
-  const [riskyTokenListMap] = useRiskyTokenListMapAtom();
-
   const [searchKey] = useSearchKeyAtom();
-
-  const { riskyTokens, keys: riskyTokenKeys } = riskyTokenList;
 
   const { smallBalanceTokens, keys: smallBalanceTokenKeys } =
     smallBalanceTokenList;
@@ -52,62 +49,48 @@ function TokenListFooter(props: IProps) {
   const isSearchMode = searchKey.length >= SEARCH_KEY_MIN_LENGTH;
 
   const handleOnPressLowValueTokens = useCallback(() => {
-    if (!account || !network || smallBalanceTokens.length === 0) return;
+    if (!account || !network || !wallet || smallBalanceTokens.length === 0)
+      return;
     navigation.pushModal(EModalRoutes.MainModal, {
       screen: EModalAssetListRoutes.TokenList,
       params: {
-        title: 'Low-value Assets',
-        helpText:
-          'Assets valued below 0.1% of your total holdings and less than $1,000 fall into this category.',
+        title: intl.formatMessage({ id: ETranslations.low_value_assets }),
+        helpText: [
+          intl.formatMessage({
+            id: ETranslations.low_value_assets_desc_out_of_range,
+          }),
+          intl.formatMessage({
+            id: ETranslations.low_value_assets_desc,
+          }),
+        ],
         accountId: account.id,
         networkId: network.id,
+        walletId: wallet.id,
         tokenList: {
           tokens: smallBalanceTokens,
           keys: smallBalanceTokenKeys,
           map: smallBalanceTokenListMap,
         },
+        deriveType,
+        deriveInfo,
+        isAllNetworks: network.isAllNetworks,
       },
     });
   }, [
     account,
+    deriveInfo,
+    deriveType,
+    intl,
     navigation,
     network,
     smallBalanceTokenKeys,
     smallBalanceTokenListMap,
     smallBalanceTokens,
+    wallet,
   ]);
 
-  const handleOnPressBlockedTokens = useCallback(() => {
-    if (!account || !network || riskyTokens.length === 0) return;
-    navigation.pushModal(EModalRoutes.MainModal, {
-      screen: EModalAssetListRoutes.TokenList,
-      params: {
-        title: 'Blocked Assets',
-        accountId: account.id,
-        networkId: network.id,
-        tokenList: {
-          tokens: riskyTokens,
-          keys: riskyTokenKeys,
-          map: riskyTokenListMap,
-        },
-        isBlocked: true,
-      },
-    });
-  }, [
-    account,
-    navigation,
-    network,
-    riskyTokenKeys,
-    riskyTokenListMap,
-    riskyTokens,
-  ]);
   return (
     <Stack>
-      {tableLayout &&
-      !isSearchMode &&
-      (smallBalanceTokens.length > 0 || riskyTokens.length > 0) ? (
-        <Divider mx="$5" my="$2" />
-      ) : null}
       {!isSearchMode && smallBalanceTokens.length > 0 ? (
         <ListItem onPress={handleOnPressLowValueTokens} userSelect="none">
           <Stack
@@ -123,7 +106,9 @@ function TokenListFooter(props: IProps) {
           </Stack>
           <ListItem.Text
             flex={1}
-            primary={`${smallBalanceTokens.length} Low-value Assets`}
+            primary={`${smallBalanceTokens.length} ${intl.formatMessage({
+              id: ETranslations.low_value_assets,
+            })}`}
             {...(tableLayout && {
               primaryTextProps: { size: '$bodyMdMedium' },
             })}
@@ -135,28 +120,6 @@ function TokenListFooter(props: IProps) {
           >
             {smallBalanceTokensFiatValue}
           </NumberSizeableText>
-        </ListItem>
-      ) : null}
-      {!isSearchMode && riskyTokens.length > 0 ? (
-        <ListItem onPress={handleOnPressBlockedTokens} userSelect="none">
-          <Stack
-            p={tableLayout ? '$1' : '$1.5'}
-            borderRadius="$full"
-            bg="$bgStrong"
-          >
-            <Icon
-              name="BlockOutline"
-              color="$iconSubdued"
-              size={tableLayout ? '$6' : '$7'}
-            />
-          </Stack>
-          <ListItem.Text
-            flex={1}
-            primary={`${riskyTokens.length} Blocked Assets`}
-            {...(tableLayout && {
-              primaryTextProps: { size: '$bodyMdMedium' },
-            })}
-          />
         </ListItem>
       ) : null}
     </Stack>

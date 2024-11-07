@@ -12,7 +12,7 @@ const NumberSizeableTextGallery = () => (
       {
         title: 'balance',
         element: (
-          <YStack space="$3">
+          <YStack gap="$3">
             <NumberSizeableText formatter="balance">1abcd1</NumberSizeableText>
             <SizableText>
               {numberFormat('1abcd1', { formatter: 'balance' })}
@@ -114,7 +114,7 @@ const NumberSizeableTextGallery = () => (
       {
         title: 'price',
         element: (
-          <YStack space="$3">
+          <YStack gap="$3">
             <NumberSizeableText
               formatter="price"
               formatterOptions={{ currency: '$' }}
@@ -131,21 +131,6 @@ const NumberSizeableTextGallery = () => (
               formatter="price"
               formatterOptions={{ currency: '$' }}
             >
-              13557362245700035555161495398047413998367933131241010410691763880119784559016062844916472252762015173133555676356423519969743085158179152633859513576266605508375167501289296167138332859964556394542868213514778276007018586151530368896935403362153851120149886761999054463554127943866078939583808923520112330553910779375966862567701643361707370405490856611696753232661556874041759.1242
-            </NumberSizeableText>
-            <SizableText>
-              {numberFormat(
-                '13557362245700035555161495398047413998367933131241010410691763880119784559016062844916472252762015173133555676356423519969743085158179152633859513576266605508375167501289296167138332859964556394542868213514778276007018586151530368896935403362153851120149886761999054463554127943866078939583808923520112330553910779375966862567701643361707370405490856611696753232661556874041759.1242',
-                {
-                  formatter: 'price',
-                  formatterOptions: { currency: '$' },
-                },
-              )}
-            </SizableText>
-            <NumberSizeableText
-              formatter="price"
-              formatterOptions={{ currency: '$' }}
-            >
               0.0045
             </NumberSizeableText>
             <SizableText>
@@ -154,6 +139,40 @@ const NumberSizeableTextGallery = () => (
                 formatterOptions: { currency: '$' },
               })}
             </SizableText>
+            <NumberSizeableText
+              formatter="price"
+              formatterOptions={{ currency: '$' }}
+            >
+              0.00000000000000009
+            </NumberSizeableText>
+            <NumberSizeableText
+              size="$bodySm"
+              formatter="price"
+              formatterOptions={{ currency: '$' }}
+            >
+              0.00000000000000009
+            </NumberSizeableText>
+            <NumberSizeableText
+              size="$headingXl"
+              formatter="price"
+              formatterOptions={{ currency: '$' }}
+            >
+              0.00000000000000009
+            </NumberSizeableText>
+            <NumberSizeableText
+              size="$heading3xl"
+              formatter="price"
+              formatterOptions={{ currency: '$' }}
+            >
+              0.00000000000000009
+            </NumberSizeableText>
+            <NumberSizeableText
+              size="$heading5xl"
+              formatter="price"
+              formatterOptions={{ currency: '$' }}
+            >
+              0.00000000000000009
+            </NumberSizeableText>
             <NumberSizeableText
               formatter="price"
               formatterOptions={{ currency: '$' }}
@@ -172,7 +191,7 @@ const NumberSizeableTextGallery = () => (
       {
         title: 'priceChange',
         element: (
-          <YStack space="$3">
+          <YStack gap="$3">
             <NumberSizeableText formatter="priceChange">
               1abcd1
             </NumberSizeableText>
@@ -211,7 +230,7 @@ const NumberSizeableTextGallery = () => (
       {
         title: 'value',
         element: (
-          <YStack space="$3">
+          <YStack gap="$3">
             <NumberSizeableText
               formatter="value"
               formatterOptions={{ currency: '$' }}
@@ -224,6 +243,12 @@ const NumberSizeableTextGallery = () => (
                 formatterOptions: { currency: '$' },
               })}
             </SizableText>
+            <NumberSizeableText
+              formatter="value"
+              formatterOptions={{ currency: '$' }}
+            >
+              0
+            </NumberSizeableText>
             <NumberSizeableText
               formatter="value"
               formatterOptions={{ currency: '$' }}
@@ -266,7 +291,7 @@ const NumberSizeableTextGallery = () => (
       {
         title: 'marketCap / MarketCap / Volume / Liquidty / TVL / TokenSupply',
         element: (
-          <YStack space="$3">
+          <YStack gap="$3">
             <NumberSizeableText formatter="marketCap">
               1abcd1
             </NumberSizeableText>
@@ -314,6 +339,14 @@ const NumberSizeableTextGallery = () => (
               {numberFormat('564200002184512.1242', {
                 formatter: 'marketCap',
               })}
+            </SizableText>
+            <SizableText>
+              {numberFormat(
+                '32551169648428747600528316797038958441150665382888568684348849999999999999999999999999999999999999999999999123123038958441150665382888568684303895844115066538288856868430389584411506653828885686843038958441150665382888568684303895844115066538288856868430389584411506653828885686843038',
+                {
+                  formatter: 'marketCap',
+                },
+              )}
             </SizableText>
           </YStack>
         ),

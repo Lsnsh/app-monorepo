@@ -1,21 +1,18 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import wordLists from 'bip39/src/wordlists/english.json';
 import { shuffle } from 'lodash';
-import { InteractionManager, Keyboard } from 'react-native';
+import { InteractionManager } from 'react-native';
 
-import { Toast, type useForm, useKeyboardEvent } from '@onekeyhq/components';
-import { useDevSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import type { useForm } from '@onekeyhq/components';
+import { useClipboard, useKeyboardEvent } from '@onekeyhq/components';
+import { dismissKeyboard } from '@onekeyhq/shared/src/keyboard';
 import platformEnv from '@onekeyhq/shared/src/platformEnv';
+import timerUtils from '@onekeyhq/shared/src/utils/timerUtils';
 
-export const useShowCopyPasteButton = () => {
-  const [devSetting] = useDevSettingsPersistAtom();
-  return (
-    platformEnv.isDev ||
-    (devSetting.enabled && devSetting.settings?.enableCopyPasteInOnboardingPage)
-  );
-};
+const isValidWord = (word: string) => wordLists.includes(word);
 
+export const PHRASE_LENGTHS = [12, 15, 18, 21, 24];
 export const useSearchWords = () => {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const ref = useRef(new Map<string, string[]>());
@@ -25,11 +22,6 @@ export const useSearchWords = () => {
     suggestionsRef.current = suggestionWords;
     setSuggestions(suggestionWords);
   }, []);
-
-  const isValidWord = useCallback(
-    (word: string) => wordLists.includes(word),
-    [],
-  );
 
   const fetchSuggestions = useCallback(
     (value: string) => {
@@ -55,27 +47,86 @@ export const useSearchWords = () => {
     suggestionsRef,
     suggestions,
     updateSuggestions,
-    isValidWord,
   };
 };
 
 export const useSuggestion = (
   form: ReturnType<typeof useForm>,
   phraseLength = 12,
+  {
+    setPhraseLength,
+  }: {
+    setPhraseLength: (length: string) => void;
+  },
 ) => {
-  const {
-    fetchSuggestions,
-    suggestions,
-    updateSuggestions,
-    isValidWord,
-    suggestionsRef,
-  } = useSearchWords();
+  const { fetchSuggestions, suggestions, updateSuggestions, suggestionsRef } =
+    useSearchWords();
+
+  const [isShowErrors, setIsShowErrors] = useState<Record<string, boolean>>({});
 
   const [selectInputIndex, setSelectInputIndex] = useState(-1);
 
+  // only work on web
   const openStatusRef = useRef(false);
 
   const updateByPressLock = useRef(false);
+
+  const checkAllWords = useCallback(() => {
+    const values = form.getValues() as Record<string, string>;
+    const errors: Record<string, boolean> = {};
+    for (let i = 0; i < phraseLength; i += 1) {
+      const key = `phrase${i + 1}`;
+      const value = values[key];
+      if (!isValidWord(value)) {
+        errors[i] = true;
+      }
+    }
+    setIsShowErrors(errors);
+  }, [form, phraseLength]);
+
+  const checkIsValidWord = useCallback(
+    (index: number, text?: string, isBlur = false) => {
+      setTimeout(() => {
+        if (!text) {
+          setIsShowErrors((prev) => ({ ...prev, [index]: false }));
+          return;
+        }
+
+        if (platformEnv.isNative && isBlur) {
+          if (isValidWord(text)) {
+            setIsShowErrors((prev) => ({ ...prev, [index]: false }));
+          } else {
+            setIsShowErrors((prev) => ({ ...prev, [index]: true }));
+          }
+          return;
+        }
+
+        if (
+          isBlur &&
+          (!openStatusRef.current ||
+            (suggestionsRef.current && suggestionsRef.current?.length === 0))
+        ) {
+          if (isValidWord(text)) {
+            setIsShowErrors((prev) => ({ ...prev, [index]: false }));
+          } else {
+            setIsShowErrors((prev) => ({ ...prev, [index]: true }));
+          }
+          return;
+        }
+
+        if (
+          selectInputIndex === index &&
+          suggestionsRef.current &&
+          suggestionsRef.current?.length > 0
+        ) {
+          setIsShowErrors((prev) => ({ ...prev, [index]: false }));
+          return;
+        }
+        setIsShowErrors((prev) => ({ ...prev, [index]: false }));
+      }, 0);
+    },
+    [selectInputIndex, suggestionsRef],
+  );
 
   const resetSuggestions = useCallback(() => {
     openStatusRef.current = false;
@@ -88,9 +139,11 @@ export const useSuggestion = (
     await new Promise<void>((resolve) => {
       setTimeout(() => {
         if (platformEnv.isNative && selectInputIndex === phraseLength - 1) {
-          Keyboard.dismiss();
+          dismissKeyboard();
         } else {
-          form.setFocus(key);
+          setTimeout(() => {
+            form.setFocus(key);
+          }, 100);
         }
         resolve();
       }, 300);
@@ -115,18 +168,13 @@ export const useSuggestion = (
       if (!value) {
         resetSuggestions();
       }
-      if (value.length > 4) {
-        Toast.message({ title: 'Max 4 chars' });
-      }
-      const text = value.toLowerCase().trim().slice(0, 4);
+      const text = value.toLowerCase().trim();
       const words = fetchSuggestions(text);
       openStatusRef.current = words.length > 0;
-      if (words.length === 1 && text === words[0]) {
-        return text.slice(0, value.length - 1);
-      }
+      checkIsValidWord(selectInputIndex, text);
       return text;
     },
-    [fetchSuggestions, resetSuggestions],
+    [checkIsValidWord, fetchSuggestions, resetSuggestions, selectInputIndex],
   );
 
   const getFormValueByIndex = useCallback(
@@ -168,53 +216,120 @@ export const useSuggestion = (
     },
   });
 
-  const checkIsValid = useCallback(
-    (index: number) => {
-      setTimeout(async () => {
-        const value = getFormValueByIndex(index);
-        const result = isValidWord(value);
-        if (!result) {
-          await updateInputValueWithLock('');
-          openStatusRef.current = false;
-        }
-      });
-    },
-    [getFormValueByIndex, isValidWord, updateInputValueWithLock],
-  );
-
   const onInputFocus = useCallback(
     (index: number) => {
-      if (openStatusRef.current && index !== selectInputIndex) {
-        checkIsValid(index - 1);
-      }
       setSelectInputIndex(index);
+      resetSuggestions();
     },
-    [checkIsValid, selectInputIndex],
+    [resetSuggestions],
   );
 
   const onInputBlur = useCallback(
     async (index: number) => {
+      if (platformEnv.isNative) {
+        checkIsValidWord(selectInputIndex, getFormValueByIndex(index), true);
+        return;
+      }
+
+      // check popover status
       if (openStatusRef.current && index === selectInputIndex) {
         return;
       }
       if (index === selectInputIndex) {
-        checkIsValid(index);
         setSelectInputIndex(-1);
       }
       openStatusRef.current = false;
+      checkIsValidWord(selectInputIndex, getFormValueByIndex(index), true);
     },
-    [checkIsValid, selectInputIndex],
+    [checkIsValidWord, getFormValueByIndex, selectInputIndex],
   );
-  return {
-    suggestions,
-    onInputFocus,
-    onInputBlur,
-    suggestionsRef,
-    updateInputValue: updateInputValueWithLock,
-    openStatusRef,
-    onInputChange,
+
+  const { clearText } = useClipboard();
+
+  const onPasteMnemonic = useCallback(
+    (value: string, inputIndex: number) => {
+      const arrays = value.trim().split(' ');
+      if (arrays.length > 1) {
+        let currentPhraseLength = phraseLength;
+        setTimeout(async () => {
+          clearText();
+          if (
+            PHRASE_LENGTHS.includes(arrays.length) &&
+            arrays.length > currentPhraseLength
+          ) {
+            currentPhraseLength = arrays.length;
+            setPhraseLength(currentPhraseLength.toString());
+            await timerUtils.wait(25);
+          }
+          const formValues = Object.values(form.getValues());
+          const values: string[] = formValues.slice(0, inputIndex);
+          const words = [...values, ...arrays].slice(0, currentPhraseLength);
+          if (words.length < currentPhraseLength) {
+            words.push(...formValues.slice(words.length, currentPhraseLength));
+          }
+          form.reset(
+            words.reduce((prev, next, index) => {
+              prev[`phrase${index + 1}`] = next;
+              return prev;
+            }, {} as Record<`phrase${number}`, string>),
+          );
+          resetSuggestions();
+          await timerUtils.wait(10);
+          checkAllWords();
+        }, 25);
+      }
+    },
+    [
+      checkAllWords,
+      clearText,
+      form,
+      phraseLength,
+      resetSuggestions,
+      setPhraseLength,
+    ],
+  );
+
+  const closePopover = useCallback(() => {
+    resetSuggestions();
+    checkIsValidWord(
+      selectInputIndex,
+      getFormValueByIndex(selectInputIndex),
+      true,
+    );
+  }, [
+    checkIsValidWord,
+    getFormValueByIndex,
+    resetSuggestions,
     selectInputIndex,
-    focusNextInput,
-    closePopover: resetSuggestions,
-  };
+  ]);
+
+  return useMemo(
+    () => ({
+      isShowErrors,
+      suggestions,
+      onInputFocus,
+      onInputBlur,
+      onPasteMnemonic,
+      suggestionsRef,
+      updateInputValue: updateInputValueWithLock,
+      openStatusRef,
+      onInputChange,
+      selectInputIndex,
+      focusNextInput,
+      closePopover,
+    }),
+    [
+      isShowErrors,
+      suggestions,
+      onInputFocus,
+      onInputBlur,
+      onPasteMnemonic,
+      suggestionsRef,
+      updateInputValueWithLock,
+      onInputChange,
+      selectInputIndex,
+      focusNextInput,
+      closePopover,
+    ],
+  );
 };

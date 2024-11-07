@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from 'react';
 
 import { useNavigation } from '@react-navigation/core';
 
-import { Page } from '@onekeyhq/components';
+import { Page, rootNavigationRef } from '@onekeyhq/components';
 import type {
   IModalNavigationProp,
   IPageNavigationProp,
@@ -15,6 +15,42 @@ import type {
   ITabStackParamList,
 } from '@onekeyhq/shared/src/routes';
 import { ERootRoutes } from '@onekeyhq/shared/src/routes';
+
+export type IAppNavigation = ReturnType<typeof useAppNavigation>;
+
+/*
+navigate by full route path:
+
+ navigation.navigate(ERootRoutes.Main, {
+      screen: ETabRoutes.Home,
+      params: {
+        screen: ETabHomeRoutes.TabHomeUrlAccountPage,
+        params,
+      },
+    });
+    
+*/
+
+/* 
+replace
+import { StackActions } from '@react-navigation/native';
+
+ navigation.dispatch(
+  StackActions.replace(ERootRoutes.Main, {
+    screen: ETabRoutes.Developer,
+    params: {
+      screen: ETabDeveloperRoutes.TabDeveloper,
+    },
+  }),
+);
+
+*/
+
+let lastPushAbleNavigation:
+  | ReturnType<
+      typeof useNavigation<IPageNavigationProp<any> | IModalNavigationProp<any>>
+    >
+  | undefined;
 
 function useAppNavigation<
   P extends
@@ -48,7 +84,7 @@ function useAppNavigation<
         params?: ITabStackParamList[T][keyof ITabStackParamList[T]];
       },
     ) => {
-      navigationRef.current.navigate(ERootRoutes.Main, {
+      rootNavigationRef.current?.navigate(ERootRoutes.Main, {
         screen: route,
         params,
       });
@@ -82,7 +118,16 @@ function useAppNavigation<
 
       // eslint-disable-next-line no-extra-boolean-cast
       if (!!navigationInstance.push) {
+        lastPushAbleNavigation = navigationInstance;
         navigationInstance.push(modalType, {
+          screen: route,
+          params,
+        });
+        return;
+      }
+      // This is a workaround for the root navigation not being able to access the child navigation
+      if (lastPushAbleNavigation) {
+        lastPushAbleNavigation.push(modalType, {
           screen: route,
           params,
         });
@@ -147,6 +192,13 @@ function useAppNavigation<
     navigationRef.current.push(...args);
   }, []);
 
+  const replace: typeof navigationRef.current.replace = useCallback(
+    (...args) => {
+      navigationRef.current.replace(...args);
+    },
+    [],
+  );
+
   const navigate: typeof navigationRef.current.navigate = useCallback(
     (...args: any) => {
       navigationRef.current.navigate(...args);
@@ -160,6 +212,7 @@ function useAppNavigation<
       navigate,
       pop,
       popStack,
+      replace,
       push,
       pushFullModal,
       pushModal,
@@ -175,6 +228,7 @@ function useAppNavigation<
       push,
       pushFullModal,
       pushModal,
+      replace,
       reset,
       setOptions,
       switchTab,

@@ -15,6 +15,7 @@ import com.facebook.react.defaults.DefaultReactNativeHost;
 import com.facebook.react.flipper.ReactNativeFlipper;
 import com.facebook.soloader.SoLoader;
 
+import cn.jiguang.plugins.push.JPushModule;
 import expo.modules.ApplicationLifecycleDispatcher;
 import expo.modules.ReactNativeHostWrapper;
 
@@ -37,6 +38,7 @@ public class MainApplication extends Application implements ReactApplication {
         // Packages that cannot be autolinked yet can be added manually here, for example:
         // packages.add(new MyReactNativePackage());
           packages.add(new BundleModulePackage(mReactNativeHost));
+          packages.add(new AutoUpdateModulePackage(mReactNativeHost));
         return packages;
       }
 
@@ -89,6 +91,7 @@ public class MainApplication extends Application implements ReactApplication {
       ReactNativeFlipper.initializeFlipper(this, getReactNativeHost().getReactInstanceManager());
     }
     ApplicationLifecycleDispatcher.onApplicationCreate(this);
+    JPushModule.registerActivityLifecycle(this);
   }
 
   @Override

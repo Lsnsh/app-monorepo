@@ -1,8 +1,9 @@
 import { useIntl } from 'react-intl';
 
 import {
-  Button,
+  Badge,
   Icon,
+  Image,
   NumberSizeableText,
   SizableText,
   Stack,
@@ -11,9 +12,17 @@ import {
 import { ListItem } from '@onekeyhq/kit/src/components/ListItem';
 import type { IListItemProps } from '@onekeyhq/kit/src/components/ListItem';
 import { useSettingsPersistAtom } from '@onekeyhq/kit-bg/src/states/jotai/atoms';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import { formatTime } from '@onekeyhq/shared/src/utils/dateUtils';
+import { EDecodedTxStatus, EReplaceTxType } from '@onekeyhq/shared/types/tx';
 
-import { Container } from '../Container';
+import { useAccountData } from '../../hooks/useAccountData';
+import { useActiveAccount } from '../../states/jotai/contexts/accountSelector';
+import {
+  InfoItem,
+  InfoItemGroup,
+} from '../../views/AssetDetails/pages/HistoryDetails/components/TxDetailsInfoItem';
+import { NetworkAvatar } from '../NetworkAvatar';
 import { Token } from '../Token';
 
 import type {
@@ -23,11 +32,31 @@ import type {
 
 function TxActionCommonAvatar({
   avatar,
-}: Pick<ITxActionCommonListViewProps, 'avatar' | 'tableLayout'>) {
+  networkLogoURI,
+}: Pick<
+  ITxActionCommonListViewProps,
+  'avatar' | 'tableLayout' | 'networkLogoURI'
+>) {
   const containerSize = '$10';
 
+  const {
+    activeAccount: { network: activeNetwork },
+  } = useActiveAccount({ num: 0 });
+
   if (!avatar.src || typeof avatar.src === 'string') {
-    return <Token size="lg" isNFT={avatar.isNFT} tokenImageUri={avatar.src} />;
+    return (
+      <Token
+        size="lg"
+        isNFT={avatar.isNFT}
+        fallbackIcon={avatar.fallbackIcon}
+        tokenImageUri={avatar.src}
+        networkImageUri={
+          activeNetwork?.isAllNetworks ? networkLogoURI : undefined
+        }
+        networkId={activeNetwork?.id}
+        showNetworkIcon={activeNetwork?.isAllNetworks}
+      />
+    );
   }
 
   return (
@@ -38,7 +67,17 @@ function TxActionCommonAvatar({
       justifyContent="flex-end"
     >
       <Stack position="absolute" left="$0" top="$0">
-        <Token size="sm" isNFT={avatar.isNFT} tokenImageUri={avatar.src[0]} />
+        <Token
+          size="sm"
+          isNFT={avatar.isNFT}
+          fallbackIcon={avatar.fallbackIcon}
+          tokenImageUri={avatar.src[0]}
+          networkImageUri={
+            activeNetwork?.isAllNetworks ? networkLogoURI : undefined
+          }
+          showNetworkIcon={activeNetwork?.isAllNetworks}
+          networkId={activeNetwork?.id}
+        />
       </Stack>
       <Stack
         borderWidth={2}
@@ -46,7 +85,17 @@ function TxActionCommonAvatar({
         borderRadius="$full"
         zIndex={1}
       >
-        <Token size="sm" isNFT={avatar.isNFT} tokenImageUri={avatar.src[1]} />
+        <Token
+          size="sm"
+          isNFT={avatar.isNFT}
+          fallbackIcon={avatar.fallbackIcon}
+          tokenImageUri={avatar.src[1]}
+          networkImageUri={
+            activeNetwork?.isAllNetworks ? networkLogoURI : undefined
+          }
+          showNetworkIcon={activeNetwork?.isAllNetworks}
+          networkId={activeNetwork?.id}
+        />
       </Stack>
     </Stack>
   );
@@ -55,18 +104,42 @@ function TxActionCommonAvatar({
 function TxActionCommonTitle({
   title,
   tableLayout,
-}: Pick<ITxActionCommonListViewProps, 'title' | 'tableLayout'>) {
+  replaceType,
+  status,
+}: Pick<
+  ITxActionCommonListViewProps,
+  'title' | 'tableLayout' | 'replaceType' | 'status'
+>) {
+  const intl = useIntl();
+
   return (
-    <SizableText
-      numberOfLines={1}
-      size="$bodyLgMedium"
-      textTransform="capitalize"
-      {...(tableLayout && {
-        size: '$bodyMdMedium',
-      })}
-    >
-      {title}
-    </SizableText>
+    <XStack alignItems="center">
+      <SizableText
+        numberOfLines={1}
+        flexShrink={1}
+        size="$bodyLgMedium"
+        {...(tableLayout && {
+          size: '$bodyMdMedium',
+        })}
+      >
+        {title}
+      </SizableText>
+      {replaceType && status === EDecodedTxStatus.Pending ? (
+        <Badge badgeSize="sm" badgeType="info" ml="$2">
+          {intl.formatMessage({
+            id:
+              replaceType === EReplaceTxType.SpeedUp
+                ? ETranslations.global_sped_up
+                : ETranslations.global_cancelling,
+          })}
+        </Badge>
+      ) : null}
+      {status === EDecodedTxStatus.Failed ? (
+        <Badge badgeSize="sm" badgeType="critical" ml="$2">
+          {intl.formatMessage({ id: ETranslations.global_failed })}
+        </Badge>
+      ) : null}
+    </XStack>
   );
 }
 
@@ -74,7 +147,7 @@ function TxActionCommonDescription({
   description,
 }: Pick<ITxActionCommonListViewProps, 'description' | 'tableLayout'>) {
   return (
-    <XStack alignItems="center">
+    <XStack alignItems="center" flex={1}>
       {description?.prefix ? (
         <SizableText size="$bodyMd" color="$textSubdued" pr="$1.5">
           {description?.prefix}
@@ -88,8 +161,8 @@ function TxActionCommonDescription({
           name={description.icon}
         />
       ) : null}
-      <SizableText size="$bodyMd" color="$textSubdued">
-        {description?.children || '-'}
+      <SizableText size="$bodyMd" color="$textSubdued" minWidth={0}>
+        {description?.children}
       </SizableText>
     </XStack>
   );
@@ -135,12 +208,16 @@ function TxActionCommonFee({
 }: Pick<ITxActionCommonListViewProps, 'fee' | 'feeFiatValue' | 'feeSymbol'> & {
   currencySymbol: string;
 }) {
+  const intl = useIntl();
+
   return (
     <Stack flexGrow={1} flexBasis={0}>
       <SizableText size="$bodyMd" color="$textSubdued">
-        Gas Fee
+        {intl.formatMessage({
+          id: ETranslations.swap_history_detail_network_fee,
+        })}
       </SizableText>
-      <XStack alignItems="center" space="$1">
+      <XStack alignItems="center" gap="$1">
         <NumberSizeableText
           size="$bodyMd"
           formatter="balance"
@@ -167,6 +244,7 @@ function TxActionCommonListView(
   const {
     avatar,
     title,
+    status,
     description,
     change,
     changeDescription,
@@ -174,48 +252,65 @@ function TxActionCommonListView(
     feeFiatValue,
     feeSymbol,
     timestamp,
-    pending,
     tableLayout,
     showIcon,
+    hideFeeInfo,
+    replaceType,
+    networkId,
+    networkLogoURI,
     ...rest
   } = props;
-
   const [settings] = useSettingsPersistAtom();
   const currencySymbol = settings.currencyInfo.symbol;
 
   return (
     <ListItem
-      space="$2"
+      testID="tx-action-common-list-view"
+      gap="$2"
       flexDirection="column"
       alignItems="flex-start"
       userSelect="none"
       {...rest}
     >
       {/* Content */}
-      <XStack space="$3" alignSelf="stretch">
+      <XStack gap="$3" alignSelf="stretch">
+        {/* token, title and subtitle */}
         <XStack
-          space="$3"
+          flex={1}
+          gap="$3"
           {...(tableLayout && {
             flexGrow: 1,
             flexBasis: 1,
           })}
         >
           {showIcon ? (
-            <TxActionCommonAvatar avatar={avatar} tableLayout={tableLayout} />
+            <TxActionCommonAvatar
+              avatar={avatar}
+              tableLayout={tableLayout}
+              networkLogoURI={networkLogoURI}
+            />
           ) : null}
-          <Stack>
-            <TxActionCommonTitle title={title} tableLayout={tableLayout} />
-            <XStack>
-              {tableLayout && timestamp ? (
+          <Stack flex={1}>
+            <TxActionCommonTitle
+              title={title}
+              status={status}
+              tableLayout={tableLayout}
+              replaceType={replaceType}
+            />
+            <XStack alignSelf="stretch">
+              {timestamp &&
+              (tableLayout || !(description && description.children)) ? (
                 <>
                   <SizableText size="$bodyMd" color="$textSubdued">
                     {formatTime(new Date(timestamp), {
                       hideSeconds: true,
                     })}
                   </SizableText>
-                  <SizableText size="$bodyMd" color="$textSubdued" mx="$1">
-                    •
-                  </SizableText>
+                  {description && description.children ? (
+                    <SizableText size="$bodyMd" color="$textSubdued" mx="$1">
+                      •
+                    </SizableText>
+                  ) : null}
                 </>
               ) : null}
               <TxActionCommonDescription
@@ -225,12 +320,14 @@ function TxActionCommonListView(
             </XStack>
           </Stack>
         </XStack>
+        {/* changes */}
         <Stack
-          flexGrow={1}
-          flexBasis={0}
+          maxWidth="50%"
           alignItems="flex-end"
           {...(tableLayout && {
             alignItems: 'unset',
+            flexGrow: 1,
+            flexBasis: 0,
           })}
         >
           {typeof change === 'string' ? (
@@ -246,7 +343,8 @@ function TxActionCommonListView(
             changeDescription
           )}
         </Stack>
-        {tableLayout ? (
+        {/* fees */}
+        {tableLayout && !hideFeeInfo ? (
           <TxActionCommonFee
             fee={fee}
             feeFiatValue={feeFiatValue}
@@ -255,52 +353,85 @@ function TxActionCommonListView(
           />
         ) : null}
       </XStack>
-
-      {/* Actions */}
-      {pending ? (
-        <XStack pl={52} space="$3">
-          <Button size="small" variant="primary">
-            Speed Up
-          </Button>
-          <Button size="small">Cancel</Button>
-        </XStack>
-      ) : null}
     </ListItem>
   );
 }
 
 function TxActionCommonDetailView(props: ITxActionCommonDetailViewProps) {
-  const { overview, target, source } = props;
+  const { overview, target, source, applyFor, networkId } = props;
   const intl = useIntl();
+  const { network } = useAccountData({ networkId });
   return (
-    <Container.Box>
-      <Container.Item
-        title={overview.title}
-        content={
-          <XStack alignItems="center" space="$1">
+    <InfoItemGroup>
+      <InfoItem
+        label={overview.title}
+        renderContent={
+          <XStack alignItems="center" gap="$3" minWidth={0}>
             <Token
-              size="md"
+              fallbackIcon={overview.avatar?.fallbackIcon}
               isNFT={overview.avatar?.isNFT}
               tokenImageUri={overview.avatar?.src}
             />
-            <SizableText size="$headingLg">{overview.content}</SizableText>
+            {typeof overview.content === 'string' ? (
+              <SizableText
+                minWidth={0}
+                maxWidth="$96"
+                size="$bodyLgMedium"
+                flex={1}
+              >
+                {overview.content}
+              </SizableText>
+            ) : (
+              overview.content
+            )}
           </XStack>
         }
       />
-      {target ? (
-        <Container.Item
-          title={target.title ?? intl.formatMessage({ id: 'content__to' })}
-          content={target.content}
+
+      {source && source.content ? (
+        <InfoItem
+          label={
+            source.title ??
+            intl.formatMessage({ id: ETranslations.content__from })
+          }
+          renderContent={source.content}
+          description={source.description?.content}
         />
       ) : null}
 
-      {source ? (
-        <Container.Item
-          title={source.title ?? intl.formatMessage({ id: 'content__from' })}
-          content={source.content}
+      {target && target.content ? (
+        <InfoItem
+          label={
+            target.title ??
+            intl.formatMessage({ id: ETranslations.content__to })
+          }
+          renderContent={target.content}
+          description={target.description?.content}
         />
       ) : null}
-    </Container.Box>
+
+      {applyFor && applyFor.content ? (
+        <InfoItem
+          label={
+            applyFor.title ??
+            intl.formatMessage({ id: ETranslations.global_for })
+          }
+          renderContent={applyFor.content}
+          description={applyFor.description?.content}
+        />
+      ) : null}
+      <InfoItem
+        label={intl.formatMessage({ id: ETranslations.network__network })}
+        renderContent={
+          <XStack alignItems="center" gap="$2">
+            <NetworkAvatar networkId={networkId} size="$5" />
+            <SizableText size="$bodyMd" color="$textSubdued">
+              {network?.name}
+            </SizableText>
+          </XStack>
+        }
+      />
+    </InfoItemGroup>
   );
 }
 

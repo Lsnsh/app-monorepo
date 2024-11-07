@@ -3,9 +3,13 @@ import { LazyLoadPage } from '@onekeyhq/kit/src/components/LazyLoadPage';
 import type { IChainSelectorParamList } from '@onekeyhq/shared/src/routes';
 import { EChainSelectorPages } from '@onekeyhq/shared/src/routes';
 
+const AccountChainSelector = LazyLoadPage(
+  () => import('../pages/AccountChainSelector'),
+);
 const ChainSelector = LazyLoadPage(() => import('../pages/ChainSelector'));
-const ConfigurableChainSelector = LazyLoadPage(
-  () => import('../pages/ConfigurableChainSelector'),
+
+const SettingCustomNetworkModal = LazyLoadPage(
+  () => import('@onekeyhq/kit/src/views/Setting/pages/CustomNetwork'),
 );
 
 export const ChainSelectorRouter: IModalFlowNavigatorConfig<
@@ -13,11 +17,15 @@ export const ChainSelectorRouter: IModalFlowNavigatorConfig<
   IChainSelectorParamList
 >[] = [
   {
+    name: EChainSelectorPages.AccountChainSelector,
+    component: AccountChainSelector,
+  },
+  {
     name: EChainSelectorPages.ChainSelector,
     component: ChainSelector,
   },
   {
-    name: EChainSelectorPages.ConfigurableChainSelector,
-    component: ConfigurableChainSelector,
+    name: EChainSelectorPages.AddCustomNetwork,
+    component: SettingCustomNetworkModal,
   },
 ];

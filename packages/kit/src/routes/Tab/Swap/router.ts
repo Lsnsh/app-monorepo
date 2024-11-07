@@ -1,15 +1,16 @@
 import type { ITabSubNavigatorConfig } from '@onekeyhq/components';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
 import { ETabSwapRoutes } from '@onekeyhq/shared/src/routes';
 
-import { LazyLoadPage } from '../../../components/LazyLoadPage';
+import { LazyLoadRootTabPage } from '../../../components/LazyLoadPage';
 
-const Swap = LazyLoadPage(() => import('../../../views/Swap'));
+const Swap = LazyLoadRootTabPage(() => import('../../../views/Swap'));
 
 export const swapRouters: ITabSubNavigatorConfig<any, any>[] = [
   {
     name: ETabSwapRoutes.TabSwap,
     component: Swap,
     rewrite: '/',
-    // translationId: 'title__swap',
+    // translationId: ETranslations.global_swap,
   },
 ];

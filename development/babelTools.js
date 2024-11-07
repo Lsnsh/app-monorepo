@@ -85,6 +85,9 @@ function normalizeConfig({ platform, config }) {
 
   config.plugins = [
     ...(config.plugins || []),
+    isDev &&
+      !isJest &&
+      !isNative && ['@sentry/babel-plugin-component-annotate'],
     [
       // Expose env variable to app client-side code, so you can access it like `process.env.XXXXX`
       'transform-inline-environment-variables',
@@ -154,16 +157,20 @@ function normalizeConfig({ platform, config }) {
     ['@babel/plugin-proposal-nullish-coalescing-operator'],
     ['@babel/plugin-proposal-class-static-block'],
     isDev && !isJest && !isNative && ['react-refresh/babel'],
-    isDev && [
-      'babel-plugin-catch-logger',
-      {
-        source: '@onekeyhq/shared/src/logger/autoLogger',
-        name: 'autoLogger',
-        methodName: 'error',
-        catchPromise: false,
-        namespaced: false,
-      },
-    ],
+    // Need to adapt to the new version of the metro build system.
+    isDev &&
+      !isJest &&
+      !isNative && [
+        'babel-plugin-catch-logger',
+        {
+          source: '@onekeyhq/shared/src/logger/autoLogger',
+          name: 'autoLogger',
+          methodName: 'error',
+          catchPromise: false,
+          namespaced: false,
+        },
+      ],
+    !isDev && !isJest && ['babel-plugin-transform-remove-console'],
     moduleResolver && ['module-resolver', moduleResolver],
   ].filter(Boolean);
   // console.log('babelToolsConfig > moduleResolver: ', moduleResolver);

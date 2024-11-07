@@ -96,6 +96,18 @@ export const info = generateSemanticColorsWithDefaultCount(
   'light',
 );
 
+export const purple = generateSemanticColorsWithDefaultCount(
+  'purpleA',
+  'purple',
+  'light',
+);
+
+export const pink = generateSemanticColorsWithDefaultCount(
+  'pinkA',
+  'pink',
+  'light',
+);
+
 /* 
   Dark color theme
 */
@@ -138,5 +150,17 @@ export const infoDark = generateSemanticColorsWithDefaultCount(
 export const criticalDark = generateSemanticColorsWithDefaultCount(
   'redDarkA',
   'critical',
+  'dark',
+);
+
+export const purpleDark = generateSemanticColorsWithDefaultCount(
+  'purpleDarkA',
+  'purple',
+  'dark',
+);
+
+export const pinkDark = generateSemanticColorsWithDefaultCount(
+  'pinkDarkA',
+  'pink',
   'dark',
 );

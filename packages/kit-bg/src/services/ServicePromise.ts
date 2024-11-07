@@ -4,12 +4,14 @@ import {
   backgroundClass,
   backgroundMethod,
 } from '@onekeyhq/shared/src/background/backgroundDecorators';
+import type { IOneKeyError } from '@onekeyhq/shared/src/errors/types/errorTypes';
+import timerUtils from '@onekeyhq/shared/src/utils/timerUtils';
 
 import ServiceBase from './ServiceBase';
 
 export type IPromiseContainerCallbackCreate = {
-  resolve: (value: unknown) => void;
-  reject: (value: unknown) => void;
+  resolve: (value: unknown | any) => void;
+  reject: (value: unknown | any) => void;
   data?: any;
 };
 export type IPromiseContainerCallback = IPromiseContainerCallbackCreate & {
@@ -24,7 +26,8 @@ export type IPromiseContainerResolve = {
 
 export type IPromiseContainerReject = {
   id: number | string;
-  error?: unknown;
+  // error can not be undefined, otherwise JSBridge can not determine whether the return object is an error or a normal return
+  error: Error | IOneKeyError | unknown; // toPlainErrorObject()
 };
 
 let latestId = 1;
@@ -41,7 +44,11 @@ class ServicePromise extends ServiceBase {
 
   // TODO increase timeout as hardware sign transaction may take a long time
   //    can set timeout for each callback
-  protected callbacksExpireTimeout: number = 10 * 60 * 1000;
+  protected callbacksExpireTimeout: number = timerUtils.getTimeDurationMs({
+    // ble update touch、pro firmware need more time
+    // 10 minutes => 30 minutes
+    minute: 30,
+  });
 
   public createCallback({
     resolve,
@@ -87,11 +94,6 @@ class ServicePromise extends ServiceBase {
       id,
       data,
     });
-  }
-
-  @backgroundMethod()
-  async testHelloWorld(name: string) {
-    return Promise.resolve(`hello world @@@@:   ${name} ${Date.now()}`);
   }
 
   @backgroundMethod()

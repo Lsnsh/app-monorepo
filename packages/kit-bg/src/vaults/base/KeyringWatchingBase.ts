@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/require-await */
 
 import type { EAddressEncodings, ISignedTxPro } from '@onekeyhq/core/src/types';
-import { WALLET_TYPE_WATCHING } from '@onekeyhq/shared/src/consts/dbConsts';
 import {
   InvalidAddress,
   OneKeyInternalError,
 } from '@onekeyhq/shared/src/errors';
+import { ETranslations } from '@onekeyhq/shared/src/locale';
+import { appLocale } from '@onekeyhq/shared/src/locale/appLocale';
 import accountUtils from '@onekeyhq/shared/src/utils/accountUtils';
 import { checkIsDefined } from '@onekeyhq/shared/src/utils/assertUtils';
 
@@ -26,21 +27,33 @@ export abstract class KeyringWatchingBase extends KeyringBase {
 
   async signTransaction(): Promise<ISignedTxPro> {
     throw new OneKeyInternalError(
-      'signTransaction is not supported for watching accounts',
+      appLocale.intl.formatMessage({
+        id: ETranslations.wallet_error_trade_with_watched_acocunt,
+      }),
     );
   }
 
   async signMessage(): Promise<string[]> {
     throw new OneKeyInternalError(
-      'signMessage is not supported for watching accounts',
+      appLocale.intl.formatMessage({
+        id: ETranslations.wallet_error_trade_with_watched_acocunt,
+      }),
     );
   }
 
   async basePrepareUtxoWatchingAccounts(
     params: IPrepareWatchingAccountsParams,
   ): Promise<IDBUtxoAccount[]> {
-    const { address, xpub, networks, createAtNetwork, name, deriveInfo } =
-      params;
+    const {
+      address,
+      xpub,
+      networks,
+      createAtNetwork,
+      name,
+      deriveInfo,
+      isUrlAccount,
+      addresses,
+    } = params;
     if (!address && !xpub) {
       throw new Error(
         'basePrepareUtxoWatchingAccounts ERROR: address and xpub are not defined',
@@ -60,6 +73,7 @@ export abstract class KeyringWatchingBase extends KeyringBase {
       address,
       xpub,
       addressEncoding,
+      isUrlAccount,
     });
     let addressFromXpub = '';
     let xpubSegwit = xpub;
@@ -88,7 +102,7 @@ export abstract class KeyringWatchingBase extends KeyringBase {
       xpub: xpub || '',
       xpubSegwit,
       path: '',
-      addresses: {},
+      addresses: addresses || {},
     };
     return [account];
   }
@@ -102,7 +116,7 @@ export abstract class KeyringWatchingBase extends KeyringBase {
       // accountType?: EDBAccountType;
     } = {},
   ): Promise<IDBAccount[]> {
-    const { address, name, networks, createAtNetwork } = params;
+    const { address, name, networks, createAtNetwork, isUrlAccount } = params;
     if (!address) {
       throw new InvalidAddress();
     }
@@ -116,8 +130,18 @@ export abstract class KeyringWatchingBase extends KeyringBase {
     const coinType = options.coinType || settings.coinTypeDefault;
     const impl = options.impl || settings.impl;
 
+    const id = accountUtils.buildWatchingAccountId({
+      coinType,
+      address,
+      isUrlAccount,
+    });
+
+    // const { normalizedAddress } = await this.vault.validateAddress(
+    //   address || '',
+    // );
+
     const account: IDBSimpleAccount = {
-      id: `${WALLET_TYPE_WATCHING}--${coinType}--${address}`,
+      id,
       name: name || '',
       type: EDBAccountType.SIMPLE,
       coinType,
