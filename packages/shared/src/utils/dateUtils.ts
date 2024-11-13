@@ -61,6 +61,12 @@ export function formatDateFns(date: Date | string, _format?: string) {
   }
 }
 
+export function formatLocaleDate(date: Date) {
+  return fnsFormat(date, 'PPP', {
+    locale: parseToDateFnsLocale(appLocale.getLocale()),
+  });
+}
+
 export function formatDate(date: Date | string, options?: IFormatDateOptions) {
   let parsedDate: Date;
   if (typeof date === 'string') {
@@ -133,13 +139,12 @@ export function formatDistanceStrict(
   return distance ?? '';
 }
 
-export function formatDistanceToNow(date: Date | number) {
+export function formatDistanceToNow(date: Date | number, addSuffix = true) {
   const locale = appLocale.getLocale();
   const distance = fnsFormatDistanceToNow(date, {
-    addSuffix: true,
+    addSuffix,
     locale: parseToDateFnsLocale(locale),
   });
-
   return distance ?? '';
 }
 

@@ -65,13 +65,16 @@ class ServiceCustomRpc extends ServiceBase {
   public async getAllCustomRpc(): Promise<ICustomRpcItem[]> {
     const result =
       await this.backgroundApi.simpleDb.customRpc.getAllCustomRpc();
-    return Promise.all(
+    const itemsWithNetwork = await Promise.all(
       result.map(async (r) => ({
         ...r,
         network: await this.backgroundApi.serviceNetwork.getNetwork({
           networkId: r.networkId,
         }),
       })),
+    );
+    return itemsWithNetwork.sort((a, b) =>
+      (a.network?.name ?? '').localeCompare(b.network?.name ?? ''),
     );
   }
 
@@ -91,6 +94,7 @@ class ServiceCustomRpc extends ServiceBase {
     });
     const result = await vault.getCustomRpcEndpointStatus({
       rpcUrl: params.rpcUrl,
+      validateChainId: params.validateChainId,
     });
     return result;
   }
